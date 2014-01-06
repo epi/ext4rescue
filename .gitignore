@@ -1,0 +1,10 @@
+bin
+obj
+doc
+README.html
+*.lst
+*.o
+testmain.d
+*.userprefs
+*.dproj
+*.sln
