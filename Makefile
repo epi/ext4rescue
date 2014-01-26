@@ -1,5 +1,7 @@
-all_modules  := ddrescue
-test_modules := ddrescue 
+DMD          = dmd
+
+all_modules  := blockcache ddrescue
+test_modules := blockcache ddrescue
 docdir       := doc
 
 all_sources  := $(foreach m,$(all_modules),$(m).d)
@@ -12,9 +14,12 @@ unittest: $(test_targets)
 .INTERMEDIATE: $(test_progs)
 
 %.lst: test-%
-	./$<
+	./$< && grep covered $@
 
-test-%: %.d testmain.d
+test.a: $(all_sources)
+	dmd -g -debug -lib $^ -of$@
+
+test-%: %.d testmain.d test.a
 	dmd -g -debug -unittest -cov $^ -of$@
 
 testmain.d:
@@ -28,7 +33,7 @@ README.html: README.md
 	markdown $< >$@
 
 clean:
-	rm -f testmain.d testmain.lst $(test_targets)
+	rm -f testmain.d testmain.lst test.a $(test_targets)
 	rm -rf doc/
 .PHONY: clean
 

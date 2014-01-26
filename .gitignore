@@ -8,3 +8,5 @@ testmain.d
 *.userprefs
 *.dproj
 *.sln
+test.a
+test-*
