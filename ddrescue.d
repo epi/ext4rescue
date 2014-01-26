@@ -81,6 +81,14 @@ bool allGood(in Region[] regions)
 	return true;
 }
 
+/// Returns true iff all regions in the file position renge [begin, end) are good.
+bool allGood(in Region[] regions, ulong begin, ulong end)
+{
+	size_t bpos = locate(regions, begin);
+	size_t epos = locate(regions, end - 1);
+	return allGood(regions[bpos .. epos + 1]);
+}
+
 /// Parses a ddrescue log file, returning an array of regions.
 Region[] parseLog(R)(R lines) if (isSomeString!(ElementType!R))
 {
