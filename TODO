@@ -1,0 +1,63 @@
+what can go wrong:
+
+globally:
+- main super block
+- root dir inode
+- root dir map (if large enough)
+- root dir data
+
+for file:
+- parent directory name/inode
+- directory entry (or entries, if ref count >1)
+- inode
+- block list / extent tree (partially or entirely)
+- data
+
+IMPORTANT (check!): every found entity will have its inode number, found
+ in either step 1 or 2:
+ - if the inode is directly readable -> no problem
+ - else - we found the inode number in a directory entry.
+
+A less reliable discovery is to grep for a directory data block
+("." and ".." directory entries at fixed positions, valid inode numbers).
+In such a case, we have no idea if it was an existing or deleted directory, but:
+ - if its inode number points to an inode that is readable -> we already
+   have it.
+ - else if its parent inode number points to an inode that is readable and none
+   of the directories found inside it have a parent assigned -> we can try it
+   // there may be more than one such dir data block!!
+   // how to solve ties?
+   - maybe we have previously (in 2)) found its name?
+ - else it is definitely a block that remained after a deleted directory.
+
+
+Discovery procedure:
+
+1. scan all inodes, read first block of every found directory to find its
+   parent and build directory tree(s).
+   a) there will be at most 1 main directory tree, i.e. the tree starting at
+      the actual root directory (all directories located in the root directory
+      have the ".." entry pointing to inode #2).
+   -> unlike files, directories always have one location in the dir tree.
+   b) there will be 0 or more pruned trees.
+2. scan all found directories.
+   a) merge trees if a directory name is found that points to a damaged inode,
+      but there are some directories that have this inode as its parent.
+   b) attach names to all inodes found in 1.
+      - some files may have more than 1 name (hardlinks)
+      - some names may remain undiscovered
+      - special case: file has multiple references, but not all of them
+        are found.
+3. (optional, heavy) use grep-dirs method to discover directories that have no
+   valid inodes.
+   -> optionally use this method only to find root directory, if its inode
+      is damaged.
+4. read extent trees, query data block correctness (but don't read them yet)
+5. flag all entries with attributes describing what is damaged.
+   - attach target names
+     -> prefix/suffix for damaged files?
+     -> different location for files with some problems?
+     ->
+   - initialize "data written" flag with "false". (will be used to decide whether
+     the file needs to be copied entirely or just hardlinked).
+
