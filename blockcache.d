@@ -259,7 +259,6 @@ class BlockCache
 			auto next = cpage.next;
 			assert(cpage.refs == 1);
 			cpage.unmap();
-			// writefln("unmap %X", cpage.data);
 			destroy(*cpage);
 			cpage = next;
 		}
@@ -347,7 +346,6 @@ private:
 	
 	void insert(ulong pageNum)
 	{
-		// writeln("insert ", pageNum, ", fs: ", _freeSlots);
 		if (!_freeSlots)
 			throw new Exception("Disk cache full");
 	 	--_freeSlots;
