@@ -61,9 +61,10 @@ private struct MemMappedExtentImpl
 	}
 }
 
-/// A memory mapped extent (range of file system blocks).
-/// Reference counting is used internally to manage lifetime of the mapping.
-/// Mapping overlapping extents results in undefined behavior.
+/** A memory mapped extent (range of file system blocks).
+ *  Reference counting is used internally to manage lifetime of the mapping.
+ *  Mapping overlapping extents results in undefined behavior.
+ */
 struct MemMappedExtent
 {
 	~this()
@@ -90,21 +91,7 @@ struct MemMappedExtent
 		swap(_impl, rhs._impl);
 	}
 
-	ubyte opIndex(size_t i) const
-	{
-		assert(_impl);
-		assert(i < length);
-		return _impl.data[i];
-	}
-
-	immutable(ubyte)[] opSlice(size_t begin, size_t end) const
-	{
-		assert(_impl);
-		assert(end <= length);
-		assert(begin <= end);
-		return _impl.data[begin .. end];
-	}
-
+	/// Size of the extent in bytes.
 	@property size_t length() const pure nothrow
 	{
 		assert(_impl);
@@ -113,11 +100,33 @@ struct MemMappedExtent
 
 	alias opDollar = length;
 
+	/// Content accessors.
 	immutable(ubyte)[] opSlice() const
 	{
 		return _impl.data[0 .. length];
 	}
 
+	/// ditto
+	ubyte opIndex(size_t i) const
+	{
+		assert(_impl);
+		assert(i < length);
+		return _impl.data[i];
+	}
+
+	/// ditto
+	immutable(ubyte)[] opSlice(size_t begin, size_t end) const
+	{
+		assert(_impl);
+		assert(end <= length);
+		assert(begin <= end);
+		return _impl.data[begin .. end];
+	}
+
+	/** Returns true if the entire extent is within a good region, false otherwise.
+	 *  See_Also:
+	 *   $(LINK2 ddrescue.html, ddrescue)
+	 */
 	@property bool ok() const pure nothrow
 	{
 		return _impl.ok;
@@ -154,10 +163,11 @@ private struct CachedPage
 	}
 }
 
-/// A memory mapped block.
-/// The mapping is cached and reference counting is used internally to manage its lifetime.
-/// In practice, this means that the block will not be unmapped until all references to it go out of scope
-/// and the cache replacement policy selects it for eviction.
+/** A memory mapped block.
+ *  The mapping is cached and reference counting is used internally to manage its lifetime.
+ *  In practice, this means that the block will not be unmapped until all references to it go out of scope
+ *  and the cache replacement policy selects it for eviction.
+ */
 struct CachedBlock
 {
 	~this()
@@ -179,21 +189,28 @@ struct CachedBlock
 		swap(_impl, rhs._impl);
 	}
 
+	/// Block content accessors.
 	ubyte opIndex(size_t i) const
 	{
 		return _impl.data[i + _offset];
 	}
 
+	/// ditto
 	immutable(ubyte)[] opSlice(size_t begin, size_t end) const
 	{
 		return _impl.data[_offset + begin .. _offset + end];
 	}
 
+	/// ditto
 	immutable(ubyte)[] opSlice() const
 	{
 		return _impl.data[_offset .. PAGE_SIZE];
 	}
 
+	/** Returns true if the entire block is within a good region, false otherwise.
+	 *  See_Also:
+	 *   $(LINK2 ddrescue.html, ddrescue)
+	 */
 	@property bool ok() const pure nothrow
 	{
 		return _impl.ok;
@@ -211,11 +228,26 @@ private:
 	uint _offset;
 }
 
-/// A struct view of a range within a block. Uses CachedBlock's logic for lifetime management and caching.
+/** A struct view of a range within a block. Uses CachedBlock's logic for lifetime management and caching.
+ *  Examples:
+ *  ---------------------
+ *  struct A { ulong foo; uint bar; char[10] baz; }
+ *  auto cs = cache.requestStruct!A(4096);
+ *  if (cs.ok)
+ *      writeln(cs.foo, " ", cs.bar, " ", cs.baz);
+ *  ---------------------
+ *  See_Also:
+ *   $(LINK2 blockcache.html#CachedBlock, Cachedblock)
+ *   $(LINK2 blockcache.html#BlockCache.requestStruct, BlockCache.requestStruct())
+ */
 struct CachedStruct(S)
 {
 	alias _s this;
 
+	/** Returns true if the entire struct is within a good region, false otherwise.
+	 *  See_Also:
+	 *   $(LINK2 ddrescue.html, ddrescue)
+	 */
 	@property bool ok() const pure nothrow { return _ok; }
 
 private:
@@ -228,18 +260,20 @@ private:
 	bool _ok;
 }
 
-/// Manages mapping of blocks and extents into memory. All mappings are read-only.
-/// To make sure that all cached blocks are unmapped and the file is closed, invoke destroy on a BlockCache instance.
+/** Manages mapping of blocks and extents into memory. All mappings are read-only.
+ *  To make sure that all cached blocks are unmapped and the file is closed, invoke destroy on a BlockCache instance.
+ */
 class BlockCache
 {
-	/// Open the specified image file.
-	/// Params:
-	///  filename    = name of the image file.
-	///  ddrescueLog = specification of damaged regions in the image, as obtained from ddrescue.parseLog().
-	///  blockSize   = block size in bytes.
-	///  capacity    = maximum number of cached blocks.
-	/// See_Also:
-	///  $(LINK2 ddrescue.html, ddrescue)
+	/** Open the specified image file.
+	 *  Params:
+	 *   filename    = name of the image file.
+	 *   ddrescueLog = specification of damaged regions in the image, as obtained from ddrescue.parseLog().
+	 *   blockSize   = block size in bytes.
+	 *   capacity    = maximum number of cached blocks.
+	 *  See_Also:
+	 *   $(LINK2 ddrescue.html, ddrescue)
+	 */
 	this(string filename, const(Region[]) ddrescueLog, uint blockSize = PAGE_SIZE, uint capacity = 1048576)
 	{
 		assert(blockSize <= PAGE_SIZE);
@@ -271,9 +305,10 @@ class BlockCache
 		}
 	}
 
-	/// Map an extent starting at block blockNum with blockCount blocks.
-	/// The extent is unmapped when all references go out of scope (i.e. extent mappings are NOT cached).
-	/// Mapping overlapping extents results in undefined behavior.
+	/** Map an extent starting at block blockNum with blockCount blocks.
+	 *  The extent is unmapped when all references go out of scope (i.e. extent mappings are NOT cached).
+	 *  Mapping overlapping extents results in undefined behavior.
+	 */
 	MemMappedExtent mapExtent(ulong blockNum, uint blockCount)
 	{
 		size_t blockSize = PAGE_SIZE / _blocksPerPage;
