@@ -275,13 +275,13 @@ struct CachedStruct(S)
 	 */
 	@property bool ok() const pure nothrow { return _ok; }
 
-private:
 	@property immutable(S*) _s() const
 	{
 		assert(_cachedBlock._impl.data !is null);
 		return cast(immutable(S*)) (_cachedBlock._impl.data + _cachedBlock._offset);
 	}
 
+private:
 	CachedBlock _cachedBlock;
 	bool _ok;
 }
