@@ -74,7 +74,7 @@ struct MemMappedExtent
 		if (!_impl.refs && _impl.data !is null)
 		{
 			munmap(_impl.pagePtr, _impl.alignedSize);
-			clear(_impl);
+			destroy(_impl);
 		}
 	}
 
@@ -224,7 +224,7 @@ private:
 }
 
 /// Manages mapping of blocks and extents into memory. All mappings are read-only.
-/// To make sure that all cached blocks are unmapped and the file is closed, invoke clear on a BlockCache instance.
+/// To make sure that all cached blocks are unmapped and the file is closed, invoke destroy on a BlockCache instance.
 class BlockCache
 {
 	/// Open the specified image file.
@@ -255,7 +255,7 @@ class BlockCache
 			assert(cpage.refs == 1);
 			unmap(cpage);
 			// writefln("unmap %X", cpage.data);
-			clear(*cpage);
+			destroy(*cpage);
 			cpage = next;
 		}
 		_mru = null;
@@ -438,7 +438,7 @@ unittest
 {
 	auto img = TempImage(1337);
 	auto bcache = new BlockCache(img.name, img.ddrescuelog, PAGE_SIZE, 100);
-	scope(exit) clear(bcache);
+	scope(exit) destroy(bcache);
 
 	foreach (bn; 0 .. 1337)
 	{
@@ -452,7 +452,7 @@ unittest
 {
 	auto img = TempImage(11337);
 	auto bcache = new BlockCache(img.name, img.ddrescuelog, 1024);
-	scope(exit) clear(bcache);
+	scope(exit) destroy(bcache);
 
 	foreach (bn; 0 .. 1337)
 	{
@@ -480,7 +480,7 @@ unittest
 	auto img = TempImage(1000);
 	{
 		auto bcache = new BlockCache(img.name, img.ddrescuelog, 4096, 100);
-		scope(exit) clear(bcache);
+		scope(exit) destroy(bcache);
 		CachedBlock[200] cbs;
 		foreach_reverse (bn; 0 .. 100)
 		{
@@ -506,7 +506,7 @@ unittest
 	log[0x136].size -= 16;
 	log[0x137].position -= 16;
 	auto bcache = new BlockCache(img.name, log, 4096);
-	scope(exit) clear(bcache);
+	scope(exit) destroy(bcache);
 	auto cs = bcache.requestStruct!Foo(0x136, 0xfe0);
 	assert(cs.bar[0] == 0x36);
 	assert(cs.ok);
