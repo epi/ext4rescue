@@ -108,18 +108,26 @@ struct MemMappedExtent
 
 	/// ditto
 	ubyte opIndex(size_t i) const
+	in
+	{
+		assert(i < length);
+	}
+	body
 	{
 		assert(_impl);
-		assert(i < length);
 		return _impl.data[i];
 	}
 
 	/// ditto
 	immutable(ubyte)[] opSlice(size_t begin, size_t end) const
+	in
 	{
-		assert(_impl);
 		assert(end <= length);
 		assert(begin <= end);
+	}
+	body
+	{
+		assert(_impl);
 		return _impl.data[begin .. end];
 	}
 
@@ -195,12 +203,23 @@ struct CachedBlock
 
 	/// Block content accessors.
 	ubyte opIndex(size_t i) const
+	in
+	{
+		assert(_offset + i < _end);
+	}
+	body
 	{
 		return _impl.data[i + _offset];
 	}
 
 	/// ditto
 	immutable(ubyte)[] opSlice(size_t begin, size_t end) const
+	in
+	{
+		assert(begin <= end);
+		assert(_offset + end <= _end);
+	}
+	body
 	{
 		return _impl.data[_offset + begin .. _offset + end];
 	}
