@@ -34,8 +34,8 @@ test-%: %.d testmain.d test.a
 testmain.d:
 	echo "void main() {}" >$@
 
-doc: $(all_sources) README.html
-	dmd -o- -Dd$(docdir) $(all_sources)
+doc: $(all_sources) ext4rescue.ddoc README.html
+	dmd -o- -Dd$(docdir) $(all_sources) ext4rescue.ddoc
 .PHONY: doc
 
 README.html: README.md
