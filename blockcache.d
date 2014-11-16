@@ -281,7 +281,7 @@ class BlockCache
 	 *  See_Also:
 	 *   $(LINK2 ddrescue.html, ddrescue)
 	 */
-	this(string filename, const(Region[]) ddrescueLog, uint blockSize = PAGE_SIZE, uint capacity = 1048576)
+	this(string filename, const(Region[]) ddrescueLog, uint blockSize = PAGE_SIZE, uint capacity = 1024)
 	{
 		assert(blockSize <= PAGE_SIZE);
 		assert(PAGE_SIZE % blockSize == 0);
