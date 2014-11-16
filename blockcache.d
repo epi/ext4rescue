@@ -173,8 +173,10 @@ struct CachedBlock
 	~this()
 	{
 		if (!_impl) return;
-		assert(_impl.refs > 1 && _impl.refs != _impl.refs.init);
+		assert(_impl.refs >= 1 && _impl.refs != _impl.refs.init);
 		--_impl.refs;
+		if (_impl.refs == 0)
+			_impl.unmap();
 	}
 
 	this(this)
@@ -291,15 +293,30 @@ class BlockCache
 		_ddrescueLog = ddrescueLog;
 	}
 
-	~this()
+	/// Clean the cache.
+	/// Returns: Number of blocks that are still mapped after removing them from the cache.
+	uint clean()
 	{
+		if (!_mru && !_lru)
+			return 0;
 		CachedPage* cpage = _mru;
+		uint mappedPageCount;
 		while (cpage)
 		{
 			auto next = cpage.next;
-			assert(cpage.refs == 1);
-			cpage.unmap();
-			destroy(*cpage);
+			--cpage.refs;
+			if (cpage.refs == 0)
+			{
+				cpage.unmap();
+				destroy(*cpage);
+			}
+			else
+			{
+				import std.stdio;
+				if (mappedPageCount == 0)
+					stderr.writeln("WARNING: BlockCache is being cleaned but some pages are still mapped");
+				++mappedPageCount;
+			}
 			cpage = next;
 		}
 		_mru = null;
@@ -309,6 +326,15 @@ class BlockCache
 			close(_fd);
 			_fd = -1;
 		}
+		return mappedPageCount;
+	}
+
+	~this()
+	{
+		import std.stdio;
+		uint mappedPageCount = clean();
+		if (mappedPageCount)
+			stderr.writefln("%s pages still mapped", mappedPageCount);
 	}
 
 	/** Map an extent starting at block blockNum with blockCount blocks.
@@ -591,4 +617,14 @@ unittest
 	assert(cs.bar[1] == 0x40);
 	cs = bcache.requestStruct!Foo();
 	assert(!cs.ok);
+}
+
+unittest
+{
+	auto img = TempImage(1000);
+	auto bcache = new BlockCache(img.name, img.ddrescuelog, 4096, 100);
+	auto blk1 = bcache.request(10);
+	auto blk2 = bcache.request(11);
+	auto blk3 = bcache.request(11);
+	assert(bcache.clean() == 2);
 }
