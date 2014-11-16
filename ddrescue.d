@@ -81,7 +81,7 @@ bool allGood(in Region[] regions)
 	return true;
 }
 
-/// Returns true iff all regions in the file position renge [begin, end) are good.
+/// Returns true iff all regions in the file position range [begin, end) are good.
 bool allGood(in Region[] regions, ulong begin, ulong end)
 {
 	size_t bpos = locate(regions, begin);
