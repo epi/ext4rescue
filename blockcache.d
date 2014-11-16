@@ -187,6 +187,8 @@ struct CachedBlock
 	void opAssign(CachedBlock rhs)
 	{
 		swap(_impl, rhs._impl);
+		swap(_offset, rhs._offset);
+		swap(_end, rhs._end);
 	}
 
 	/// Block content accessors.
@@ -204,7 +206,7 @@ struct CachedBlock
 	/// ditto
 	immutable(ubyte)[] opSlice() const
 	{
-		return _impl.data[_offset .. PAGE_SIZE];
+		return _impl.data[_offset .. _end];
 	}
 
 	/** Returns true if the entire block is within a good region, false otherwise.
@@ -217,15 +219,17 @@ struct CachedBlock
 	}
 
 private:
-	this(CachedPage* impl, uint offset = 0)
+	this(CachedPage* impl, uint offset = 0, uint end = PAGE_SIZE)
 	{
 		_impl = impl;
 		++_impl.refs;
 		_offset = offset;
+		_end = end;
 	}
 	
 	CachedPage* _impl;
 	uint _offset;
+	uint _end;
 }
 
 /** A struct view of a range within a block. Uses CachedBlock's logic for lifetime management and caching.
@@ -253,7 +257,8 @@ struct CachedStruct(S)
 private:
 	@property immutable(S*) _s() const
 	{
-		with(_cachedBlock) return cast(immutable(S*)) _impl.data;
+		assert(_cachedBlock._impl.data !is null);
+		return cast(immutable(S*)) (_cachedBlock._impl.data + _cachedBlock._offset);
 	}
 
 	CachedBlock _cachedBlock;
@@ -281,6 +286,7 @@ class BlockCache
 		_fd = open(filename.toStringz(), O_RDONLY);
 		errnoEnforce(_fd >= 0, text("failed to open ", filename));
 		_blocksPerPage = cast(uint) (PAGE_SIZE / blockSize);
+		_blockSize = blockSize;
 		_freeSlots = capacity;
 		_ddrescueLog = ddrescueLog;
 	}
@@ -327,7 +333,7 @@ class BlockCache
 	}
 
 	/// Map block blockNum. Reuse existing mapping if the block is already in cache.
-	CachedBlock request(ulong blockNum)
+	CachedBlock request(ulong blockNum, size_t offset = 0)
 	{
 		ulong pageNum = blockNum / _blocksPerPage;
 		auto centry = _hashTable.get(pageNum, null);
@@ -341,19 +347,26 @@ class BlockCache
 				insert(pageNum);
 			else
 				replaceLru(pageNum);
-			ulong offset = PAGE_SIZE * pageNum;
-			_mru.data = cast(immutable(ubyte)*) mmap(null, PAGE_SIZE, PROT_READ, MAP_PRIVATE, _fd, offset);
+			ulong fileOffset = PAGE_SIZE * pageNum;
+			_mru.data = cast(immutable(ubyte)*) mmap(null, PAGE_SIZE, PROT_READ, MAP_PRIVATE, _fd, fileOffset);
 			errnoEnforce(_mru.data != MAP_FAILED, "mmap failed");
-			_mru.ok = _ddrescueLog.allGood(offset, offset + PAGE_SIZE);
+			_mru.ok = _ddrescueLog.allGood(fileOffset, fileOffset + PAGE_SIZE);
 		}
-		return CachedBlock(_mru, blockNum % _blocksPerPage);
+		uint blockOffset = cast(uint) (blockNum % _blocksPerPage * _blockSize);
+		return CachedBlock(_mru, blockOffset + cast(uint) offset, blockOffset + _blockSize);
 	}
 
 	/// Map block blockNum and return a refcounted handle to access the part of the block at the given offset
 	/// as struct S.
 	CachedStruct!S requestStruct(S)(ulong blockNum, size_t offset)
+	in
 	{
-		auto cb = request(blockNum);
+		assert(offset <= _blockSize);
+		assert(offset + S.sizeof <= _blockSize);
+	}
+	body
+	{
+		auto cb = request(blockNum, offset);
 		ulong fileOffset = cb._impl.pageNum * PAGE_SIZE + offset;
 		return CachedStruct!S(cb, _ddrescueLog.allGood(fileOffset, fileOffset + S.sizeof));
 	}
@@ -426,6 +439,7 @@ private:
 	CachedPage* _lru;
 	const(Region[]) _ddrescueLog;
 	uint _blocksPerPage;
+	uint _blockSize;
 }
 
 version (unittest)
@@ -450,10 +464,12 @@ version (unittest)
 			enum blockSize = 4096;
 			auto buf = new ubyte[blockSize];
 			bool ok = true;
+			foreach (i; 0 .. blockSize / 2)
+				buf[i * 2 + 1] = (i * 2) & 0xff;
 			foreach (bn; 0 .. size)
 			{
-				foreach (ref b; buf)
-					b = bn & 0xff;
+				foreach (i; 0 .. blockSize / 2)
+					buf[i * 2] = bn & 0xff;
 				f.rawWrite(buf);
 				ddrescuelog ~= Region(bn * blockSize, blockSize, ok);
 				ok = !ok;
@@ -542,8 +558,10 @@ unittest
 	scope(exit) destroy(bcache);
 	auto cs = bcache.requestStruct!Foo(0x136, 0xfe0);
 	assert(cs.bar[0] == 0x36);
+	assert(cs.bar[1] == 0xe0);
 	assert(cs.ok);
 	cs = bcache.requestStruct!Foo(0x136, 0xfe8);
 	assert(cs.bar[0] == 0x36);
+	assert(cs.bar[1] == 0xe8);
 	assert(!cs.ok);
 }
