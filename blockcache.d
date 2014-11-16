@@ -434,6 +434,9 @@ class BlockCache
 		return CachedStruct!S();
 	}
 
+	/// Size of a block in bytes.
+	@property uint blockSize() const { return _blockSize; }
+
 private:
 	void moveToFront(CachedPage* cpage)
 	{
