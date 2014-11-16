@@ -356,8 +356,9 @@ class BlockCache
 		return CachedBlock(_mru, blockOffset + cast(uint) offset, blockOffset + _blockSize);
 	}
 
-	/// Map block blockNum and return a refcounted handle to access the part of the block at the given offset
-	/// as struct S.
+	/** Map block blockNum and return a refcounted handle to access the part of the block at the given offset
+	 *  as struct S.
+	 */
 	CachedStruct!S requestStruct(S)(ulong blockNum, size_t offset)
 	in
 	{
@@ -369,6 +370,23 @@ class BlockCache
 		auto cb = request(blockNum, offset);
 		ulong fileOffset = cb._impl.pageNum * PAGE_SIZE + offset;
 		return CachedStruct!S(cb, _ddrescueLog.allGood(fileOffset, fileOffset + S.sizeof));
+	}
+
+	/** Translate fileOffset to block number and offset within the block, then map the block and return
+	 *  a refcounted handle to access the specified part of mapped block as struct S.
+	 */
+	CachedStruct!S requestStruct(S)(ulong fileOffset)
+	{
+		auto blockNum = fileOffset / _blockSize;
+		auto offset = fileOffset % _blockSize;
+		return requestStruct!S(blockNum, offset);
+	}
+
+	/** Return a CachedStruct!S that is not mapped and reports itself as bad.
+	 */
+	CachedStruct!S requestStruct(S)()
+	{
+		return CachedStruct!S();
 	}
 
 private:
@@ -563,5 +581,10 @@ unittest
 	cs = bcache.requestStruct!Foo(0x136, 0xfe8);
 	assert(cs.bar[0] == 0x36);
 	assert(cs.bar[1] == 0xe8);
+	assert(!cs.ok);
+	cs = bcache.requestStruct!Foo(0x1340);
+	assert(cs.bar[0] == 0x01);
+	assert(cs.bar[1] == 0x40);
+	cs = bcache.requestStruct!Foo();
 	assert(!cs.ok);
 }
