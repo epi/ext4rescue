@@ -1,6 +1,6 @@
 bin
 obj
-doc
+doc/*.html
 README.html
 *.lst
 *.o
@@ -10,3 +10,4 @@ testmain.d
 *.sln
 test.a
 test-*
+ext4rescue
