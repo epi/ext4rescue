@@ -147,6 +147,11 @@ private struct CachedPage
 	// links to manage LRU list
 	CachedPage* prev;
 	CachedPage* next;
+
+	void unmap()
+	{
+		errnoEnforce(munmap(cast(void*) data, PAGE_SIZE) == 0);
+	}
 }
 
 /// A memory mapped block.
@@ -253,7 +258,7 @@ class BlockCache
 		{
 			auto next = cpage.next;
 			assert(cpage.refs == 1);
-			unmap(cpage);
+			cpage.unmap();
 			// writefln("unmap %X", cpage.data);
 			destroy(*cpage);
 			cpage = next;
@@ -320,11 +325,6 @@ class BlockCache
 	}
 
 private:
-	void unmap(CachedPage* cpage)
-	{
-		errnoEnforce(munmap(cast(void*) cpage.data, PAGE_SIZE) == 0);
-	}
-
 	void moveToFront(CachedPage* cpage)
 	{
 		assert(cpage);
@@ -374,7 +374,7 @@ private:
 			if (cpage.refs == 1)
 			{
 				// remove
-				unmap(cpage);
+				cpage.unmap();
 				_hashTable.remove(cpage.pageNum);
 				// replace
 				cpage.pageNum = pageNum;
