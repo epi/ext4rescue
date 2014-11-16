@@ -528,7 +528,7 @@ unittest
 			MemMappedExtent mme = bcache.mapExtent(bn, bc);
 			assert(mme._impl.refs == 1);
 			{
-				auto mme2 = mme;
+				auto mme2 = mme; // blit
 				assert(mme2._impl == mme._impl);
 				assert(mme._impl.refs == 2);
 				assert(mme2.length == bc * 1024);
@@ -537,6 +537,10 @@ unittest
 				assert(mme2[0] == bn / 4 % 256);
 			}
 			assert(mme._impl.refs == 1);
+			MemMappedExtent mme2;
+			mme2 = mme; // opAssign
+			assert(mme2._impl.refs == 2);
+			assert(mme._impl.refs == 2);
 			assert(!mme.ok); // any extent longer than 4096 bytes is bad in the test image
 		}
 	}
