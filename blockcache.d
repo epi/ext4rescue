@@ -28,6 +28,8 @@ import std.exception;
 import std.range;
 import std.stdint;
 import std.string;
+import std.traits;
+debug import std.stdio;
 
 import core.sys.posix.fcntl;
 import core.sys.posix.unistd;
@@ -279,6 +281,36 @@ struct CachedStruct(S)
 	{
 		assert(_cachedBlock._impl.data !is null);
 		return cast(immutable(S*)) (_cachedBlock._impl.data + _cachedBlock._offset);
+	}
+
+	debug
+	void dump(File outfile = stdout)
+	{
+		outfile.writefln("struct %s @%s {", S.stringof, &_cachedBlock._impl.data);
+		foreach (memb; __traits(allMembers, S))
+		{
+			static if (__traits(compiles, mixin("cast(const(ubyte*)) &_s." ~ memb)))
+			{
+				auto type = Unqual!(typeof(mixin("_s." ~ memb))).stringof;
+				static if (!isSomeFunction!(mixin("S." ~ memb)))
+				{
+					auto addr = cast(const(ubyte)*) (mixin("&_s." ~ memb));
+					auto offs = addr - cast(ubyte*) _s();
+					writef("\t@+%04x %s %s = ", offs, type, memb);
+				}
+				else
+					writef("\t       %s %s = ", type, memb);
+				if (type.startsWith("uint["))
+					writefln("[%(%08x%| %)]", mixin("_s." ~ memb));
+				else if (type == "uint")
+					writefln("%08x", mixin("_s." ~ memb));
+				else if (type == "ushort")
+					writefln("%04x", mixin("_s." ~ memb));
+				else
+					writeln(mixin("_s." ~ memb));
+			}
+		}
+		writeln("}");
 	}
 
 private:
