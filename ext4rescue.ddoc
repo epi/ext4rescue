@@ -13,6 +13,7 @@ DDOC =	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/h
 
 			<div id="menu">
 				<h3>Modules</h3>
+				<p><a href="bits.html">bits</a></p>
 				<p><a href="blockcache.html">blockcache</a></p>
 				<p><a href="ddrescue.html">ddrescue</a></p>
 				<p><a href="defs.html">defs</a></p>

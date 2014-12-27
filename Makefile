@@ -1,5 +1,5 @@
-all_modules  := blockcache ddrescue defs ext4
-test_modules := blockcache ddrescue ext4
+all_modules  := bits blockcache ddrescue defs ext4
+test_modules := bits blockcache ddrescue ext4
 docdir       := doc
 
 all_sources  := $(foreach m,$(all_modules),$(m).d)
