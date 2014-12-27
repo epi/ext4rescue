@@ -15,7 +15,10 @@
  */
 module defs;
 
+import std.bitmanip;
 import std.traits;
+
+import bits;
 
 version (LittleEndian)
 {
@@ -92,10 +95,69 @@ struct ext4_super_block
 	__le32  s_first_ino;            /// First non-reserved inode
 	__le16  s_inode_size;           /// size of inode structure
 	__le16  s_block_group_nr;       /// block group # of this superblock
-	__le32  s_feature_compat;       /// compatible feature set
+	union {
+		__le32  s_feature_compat;       /// compatible feature set
+		mixin(bitfields!(
+			bool, "s_feature_compat_dir_prealloc", 1,
+			bool, "s_feature_compat_imagic_inodes", 1,
+			bool, "s_feature_compat_has_journal", 1,
+			bool, "s_feature_compat_ext_attr", 1,
+
+			bool, "s_feature_compat_resize_inode", 1,
+			bool, "s_feature_compat_dir_index", 1,
+			bool, "s_feature_compat_lazy_bg", 1,
+			bool, "s_feature_compat_exclude_inode", 1,
+
+			bool, "s_feature_compat_exclude_bitmap", 1,
+			bool, "s_feature_compat_sparse_super2", 1,
+
+			uint, "s_feature_compat___reserved1", 22));
+	}
  	/*60*/
- 	__le32  s_feature_incompat;     /// incompatible feature set
-	__le32  s_feature_ro_compat;    /// readonly-compatible feature set
+	union {
+		__le32  s_feature_incompat;     /// incompatible feature set
+		mixin(bitfields!(
+			bool, "s_feature_incompat_compression", 1,
+			bool, "s_feature_incompat_filetype", 1,
+			bool, "s_feature_incompat_recover", 1,
+			bool, "s_feature_incompat_journal_dev", 1,
+
+			bool, "s_feature_incompat_meta_bg", 1,
+			bool, "s_feature_incompat___reserved1", 1,
+			bool, "s_feature_incompat_extents", 1,
+			bool, "s_feature_incompat_64bit", 1,
+
+			bool, "s_feature_incompat_mmp", 1,
+			bool, "s_feature_incompat_flex_bg", 1,
+			bool, "s_feature_incompat_ea_inode", 1,
+			bool, "s_feature_incompat___reserved2", 1,
+
+			bool, "s_feature_incompat_dirdata", 1,
+			bool, "s_feature_incompat_bg_use_meta_csum", 1,
+			bool, "s_feature_incompat_largedir", 1,
+			bool, "s_feature_incompat_inline_data", 1,
+
+			uint, "s_feature_incompat___reserved3", 16));
+	}
+	union {
+		__le32  s_feature_ro_compat;    /// readonly-compatible feature set
+		mixin(bitfields!(
+			bool, "s_feature_ro_compat_sparse_super", 1,
+			bool, "s_feature_ro_compat_large_file", 1,
+			bool, "s_feature_ro_compat_btree_dir", 1,
+			bool, "s_feature_ro_compat_huge_file", 1,
+
+			bool, "s_feature_ro_compat_gdt_csum", 1,
+			bool, "s_feature_ro_compat_dir_nlink", 1,
+			bool, "s_feature_ro_compat_extra_isize", 1,
+			bool, "s_feature_ro_compat_has_snapshot", 1,
+
+			bool, "s_feature_ro_compat_quota", 1,
+			bool, "s_feature_ro_compat_bigalloc", 1,
+			bool, "s_feature_ro_compat_metadata_csum", 1,
+
+			uint, "s_feature_ro_compat___reserved1", 21));
+	}
  	/*68*/
  	__u8    s_uuid[16];             /// 128-bit uuid for volume
  	/*78*/
@@ -166,6 +228,11 @@ struct ext4_super_block
 	__le32  s_overhead_clusters;    /// overhead blocks/clusters in fs
 	__le32  s_reserved[108];        /// Padding to the end of the block
 	__le32  s_checksum;             /// crc32c(superblock)
+
+	@property __le16 desc_size() const pure nothrow
+	{
+		return s_feature_incompat_64bit ? s_desc_size : 32;
+	}
 }
 
 enum EXT4_S_ERR_START = ext4_super_block.s_error_count.offsetof;
@@ -173,7 +240,7 @@ enum EXT4_S_ERR_END   = ext4_super_block.s_mount_opts.offsetof;
 
 ///
 enum EXT4_NAME_LEN = 255;
- 
+
 /// Structure of a directory entry
 struct ext4_dir_entry
 {
@@ -227,7 +294,74 @@ struct ext4_group_desc
 }
 
 ///
-enum EXT4_N_BLOCKS = 13;
+enum
+{
+	EXT4_NDIR_BLOCKS = 12,
+	EXT4_IND_BLOCK   = EXT4_NDIR_BLOCKS,
+	EXT4_DIND_BLOCK  = (EXT4_IND_BLOCK + 1),
+	EXT4_TIND_BLOCK  = (EXT4_DIND_BLOCK + 1),
+	EXT4_N_BLOCKS    = (EXT4_TIND_BLOCK + 1),
+}
+
+enum FileType : uint
+{
+	fifo = 1,
+	chrdev = 2,
+	dir = 4,
+	blkdev = 6,
+	reg = 8,
+	link = 10,
+	socket = 12
+}
+
+struct Mode
+{
+	union
+	{
+		mixin(bitfields!(
+			uint, "perm", 9,
+			bool, "sticky", 1,
+			bool, "setguid", 1,
+			bool, "setuid", 1,
+			FileType, "type", 4));
+		__u16 mode;
+	}
+
+	void toString(scope void delegate(const(char)[]) sink) const
+	{
+		switch (type)
+		{
+		case FileType.fifo:
+			sink("FIFO"); break;
+		case FileType.chrdev:
+			sink("CDEV"); break;
+		case FileType.blkdev:
+			sink("BDEV"); break;
+		case FileType.reg:
+			sink("FILE"); break;
+		case FileType.link:
+			sink("LINK"); break;
+		case FileType.dir:
+			sink("DIR "); break;
+		case FileType.socket:
+			sink("SOCK"); break;
+		default:
+			sink("????"); break;
+		}
+		sink(" | ");
+		char[3] pp;
+		pp[0] = ((perm >> 6) & 7) + '0';
+		pp[1] = ((perm >> 3) & 7) + '0';
+		pp[2] = ((perm >> 0) & 7) + '0';
+		sink(pp[]);
+		if (sticky)
+			sink(" | sticky");
+		if (setguid)
+			sink(" | setguid");
+		if (setuid)
+			sink(" | setuid");
+	}
+}
 
 ///
 struct ext4_inode
@@ -244,7 +378,19 @@ struct ext4_inode
 	__le32  i_blocks_lo;    /// Blocks count
 	__le32  i_flags;        /// File flags
 	__le32  l_i_version;    ///
-	__le32  i_block[EXT4_N_BLOCKS]; /// Pointers to blocks
+	union
+	{
+		__le32  i_block[EXT4_N_BLOCKS]; /// Pointers to blocks
+		struct
+		{
+			ext4_extent_header extent_header;
+			union
+			{
+				ext4_extent extent[4];
+				ext4_extent_idx extent_idx[4];
+			}
+		}
+	}
 	__le32  i_generation;   /// File version (for NFS)
 	__le32  i_file_acl_lo;  /// File ACL
 	__le32  i_size_high;    ///
@@ -263,8 +409,57 @@ struct ext4_inode
 	__le32  i_crtime;       /// File Creation time
 	__le32  i_crtime_extra; /// extra FileCreationtime (nsec << 2 | epoch)
 	__le32  i_version_hi;   /// high 32 bits for 64-bit version
+
+	@property Mode mode() const pure nothrow
+	{
+		Mode m;
+		m.mode = i_mode;
+		return m;
+	}
+
+	@property ulong size() const pure nothrow
+	{
+		if (mode.type == FileType.reg)
+			return bitCat(i_size_high, i_size_lo);
+		else
+			return i_size_lo;
+	}
 }
 
 enum EXT4_EPOCH_BITS = 2;
 enum EXT4_EPOCH_MASK = (1UL << EXT4_EPOCH_BITS) - 1;
 enum EXT4_NSEC_MASK  = (~0UL << EXT4_EPOCH_BITS);
+
+/// This is the extent on-disk structure. It's used at the bottom of the tree.
+struct ext4_extent
+{
+	__le32  ee_block;       /// first logical block extent covers
+	__le16  ee_len;         /// number of blocks covered by extent
+	__le16  ee_start_hi;    /// high 16 bits of physical block
+	__le32  ee_start_lo;    /// low 32 bits of physical block
+};
+
+/// This is index on-disk structure. It's used at all the levels except the bottom.
+struct ext4_extent_idx
+{
+	__le32  ei_block;       /// index covers logical blocks from 'block'
+	__le32  ei_leaf_lo;     /// pointer to the physical block of the next level. leaf or next index could be there
+	__le16  ei_leaf_hi;     /// high 16 bits of physical block
+	__u16   ei_unused;
+};
+
+/// Each block (leaves and indexes), even inode-stored has header.
+struct ext4_extent_header
+{
+	__le16  eh_magic;       /// probably will support different formats
+	__le16  eh_entries;     /// number of valid entries
+	__le16  eh_max;         /// capacity of store in entries
+	__le16  eh_depth;       /// has tree real underlying blocks?
+	__le32  eh_generation;  /// generation of the tree
+};
+
+static assert(ext4_extent.sizeof == ext4_extent_idx.sizeof);
+static assert(ext4_extent.sizeof == ext4_extent_header.sizeof);
+
+///
+enum __le16 EXT4_EXT_MAGIC = 0xf30a;

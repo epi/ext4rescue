@@ -22,7 +22,9 @@ module ext4;
 
 import std.conv;
 import std.exception;
+import std.format;
 import std.stdio;
+import std.typecons;
 
 import blockcache;
 import ddrescue;
@@ -146,25 +148,34 @@ class Ext4
 private:
 	CachedStruct!ext4_group_desc readGroupDesc(ulong groupNum)
 	{
-		auto groupDescsPerBlock = _blockSize / ext4_group_desc.sizeof;
-		assert(groupDescsPerBlock * ext4_group_desc.sizeof == _blockSize);
+		auto descSize = _superBlock.desc_size;
+		auto groupDescsPerBlock = _blockSize / descSize;
+		assert(groupDescsPerBlock * descSize == _blockSize);
 		ulong blockNum = _superBlockIndex + 1 + groupNum / groupDescsPerBlock;
-		ulong offset = groupNum % groupDescsPerBlock * ext4_group_desc.sizeof;
+		ulong offset = groupNum % groupDescsPerBlock * descSize;
 		return _cache.requestStruct!ext4_group_desc(blockNum, offset);
 	}
 
-	CachedStruct!ext4_inode readInode(ulong inodeNum)
+	auto getInodeLocation(ulong inodeNum)
 	{
 		--inodeNum; // counting inodes starts at #1
 		assert(inodeNum < _superBlock.s_inodes_count);
 		ulong groupNum = inodeNum / _superBlock.s_inodes_per_group;
 		auto groupDesc = readGroupDesc(groupNum);
 		if (!groupDesc.ok)
-			return _cache.requestStruct!ext4_inode();
+			return Tuple!(ulong, "blockNum", uint, "offset")(0, 0);
 		auto inodeIndexInGroup = inodeNum % _superBlock.s_inodes_per_group;
 		ulong blockNum = groupDesc.bg_inode_table_lo + inodeIndexInGroup / _inodesPerBlock;
-		ulong offset = cast(uint) ((inodeIndexInGroup % _inodesPerBlock) * _superBlock.s_inode_size);
-		return _cache.requestStruct!ext4_inode(blockNum, offset);
+		uint offset = cast(uint) ((inodeIndexInGroup % _inodesPerBlock) * _superBlock.s_inode_size);
+		return Tuple!(ulong, "blockNum", uint, "offset")(blockNum, offset);
+	}
+
+	CachedStruct!ext4_inode readInode(ulong inodeNum)
+	{
+		auto loc = getInodeLocation(inodeNum);
+		if (!loc.blockNum)
+			_cache.requestStruct!ext4_inode();
+		return _cache.requestStruct!ext4_inode(loc.blockNum, loc.offset);
 	}
 
 	BlockCache _cache;
