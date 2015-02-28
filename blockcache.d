@@ -284,7 +284,7 @@ struct CachedStruct(S)
 	}
 
 	debug
-	void dump(File outfile = stdout)
+	void dump(File outfile = stdout) const
 	{
 		outfile.writefln("struct %s @%s {", S.stringof, &_cachedBlock._impl.data);
 		foreach (memb; __traits(allMembers, S))
