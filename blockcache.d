@@ -439,8 +439,8 @@ class BlockCache
 	CachedStruct!S requestStruct(S)(ulong blockNum, size_t offset)
 	in
 	{
-		assert(offset <= _blockSize);
-		assert(offset + S.sizeof <= _blockSize);
+		assert(offset <= _blockSize && offset + S.sizeof <= _blockSize, format(
+			"mapping struct %s outside block bounds. blockNum=%d offset=%03x", S.stringof, blockNum, offset));
 	}
 	body
 	{
