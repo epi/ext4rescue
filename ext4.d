@@ -26,6 +26,7 @@ import std.format;
 import std.stdio;
 import std.typecons;
 
+import bits;
 import blockcache;
 import ddrescue;
 import defs;
@@ -133,6 +134,140 @@ class Ext4
 		}
 
 		return Inodes(this);
+	}
+
+	static struct Stack(T)
+	{
+		import std.array: Appender, appender;
+		Appender!(T[]) _app;
+		@property ref inout(T) top() inout { return _app.data[$ - 1]; };
+		@property bool empty() const { return _app.data.length == 0; }
+		void pop() { _app.data[$ - 1].destroy(); _app.shrinkTo(_app.data.length - 1); }
+		void push(T t) { _app.put(t); }
+	}
+
+	auto getExtentsForInode(ulong inodeNum)
+	{
+		static struct Extent
+		{
+			ulong start;
+			uint length;
+			uint logical;
+			bool ok;
+
+			string toString() const
+			{
+				import std.string;
+				if (ok)
+					return format("@%s..%s [%s..%s]", logical, logical + length - 1, start, start + length - 1);
+				return "!ok";
+			}
+		}
+
+		static struct Node
+		{
+			CachedStruct!ext4_extent_header header;
+			ulong blockNum;   // physical block where the tree node is located
+			uint arrayOffset; // where the array of ext4_extent starts within the block
+			uint nodeIndex;   // current entry within this node
+		}
+
+		static struct Range
+		{
+		private:
+			Extent _current;
+			Stack!Node _treePath;
+			Ext4 _ext4;
+			bool _ok = true;
+
+		public:
+			/// Returns true if at least the root header is correct
+			@property bool ok() const pure nothrow { return _ok; }
+
+			this(Ext4 ext4, ulong inodeNum)
+			{
+				_ext4 = ext4;
+				// root entries are inside the inode itself
+				auto loc = _ext4.getInodeLocation(inodeNum);
+				ulong blockNum = loc.blockNum;
+				uint offset = loc.offset + cast(uint) (ext4_inode.i_block.offsetof);
+				auto header = _ext4._cache.requestStruct!ext4_extent_header(blockNum, offset);
+				if (!header.ok || header.eh_magic != EXT4_EXT_MAGIC)
+				{
+					_ok = false;
+					return;
+				}
+				_treePath.push(Node(header, blockNum, offset + cast(uint) ext4_extent_header.sizeof, 0));
+				descendToLeaf();
+			}
+
+			~this()
+			{
+				while (!_treePath.empty)
+					_treePath.pop();
+			}
+
+			private void appendNode(ulong headerBlockNum, uint headerOffset)
+			{
+				auto header = _ext4._cache.requestStruct!ext4_extent_header(headerBlockNum, headerOffset);
+				if (!header.ok || header.eh_magic != EXT4_EXT_MAGIC)
+				{
+					_ok = false;
+					return;
+				}
+				_treePath.push(Node(header, headerBlockNum, headerOffset + cast(uint) ext4_extent_header.sizeof, 0));
+			}
+
+			private void descendToLeaf()
+			{
+				// read headers up to leaf level
+				for (;;)
+				{
+					if (_treePath.top.header.eh_depth == 0)
+					{
+						// read leaf
+						CachedStruct!ext4_extent ext = _ext4._cache.requestStruct!ext4_extent(
+							_treePath.top.blockNum,
+							_treePath.top.arrayOffset + _treePath.top.nodeIndex * ext4_extent_idx.sizeof);
+						_current = Extent(bitCat(ext.ee_start_hi, ext.ee_start_lo), ext.ee_len, ext.ee_block, ext.ok);
+						break;
+					}
+					else
+					{
+						// read index
+						CachedStruct!ext4_extent_idx idx = _ext4._cache.requestStruct!ext4_extent_idx(
+							_treePath.top.blockNum,
+							_treePath.top.arrayOffset + _treePath.top.nodeIndex * ext4_extent_idx.sizeof);
+						if (!idx.ok)
+						{
+							_current = Extent(0, 0, 0, false);
+							break;
+						}
+						auto blockNum = bitCat(idx._s.ei_leaf_hi, idx._s.ei_leaf_lo);
+						appendNode(blockNum, 0);
+					}
+				}
+			}
+
+			@property bool empty() const { return !_ok || _treePath.empty; }
+
+			@property Extent front() const { return _current; }
+
+			void popFront()
+			{
+				assert(!empty);
+				while (!_treePath.empty)
+				{
+					if (++_treePath.top.nodeIndex < _treePath.top.header.eh_entries)
+						break;
+					_treePath.pop();
+				}
+				if (!_treePath.empty)
+					descendToLeaf();
+			}
+		}
+
+		return Range(this, inodeNum);
 	}
 
 	/** The currently used super block.
