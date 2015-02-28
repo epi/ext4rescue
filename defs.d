@@ -265,7 +265,20 @@ struct ext4_dir_entry_2
 	char    name[EXT4_NAME_LEN];    /// File name
 }
 
-/// Structure of a blocks group descriptor
+/// Structure of a blocks group descriptor (ext3)
+struct ext3_group_desc
+{
+	__le32  bg_block_bitmap_lo;      /// Blocks bitmap block
+	__le32  bg_inode_bitmap_lo;      /// Inodes bitmap block
+	__le32  bg_inode_table_lo;       /// Inodes table block
+	__le16  bg_free_blocks_count_lo; /// Free blocks count
+	__le16  bg_free_inodes_count_lo; /// Free inodes count
+	__le16  bg_used_dirs_count_lo;   /// Directories count
+	__u16   bg_pad;
+	__le32  bg_reserved[3];
+};
+
+/// Structure of a blocks group descriptor (ext4)
 struct ext4_group_desc
 {
 	__le32  bg_block_bitmap_lo;      /// Blocks bitmap block
@@ -364,7 +377,7 @@ struct Mode
 }
 
 ///
-struct ext4_inode
+struct ext3_inode
 {
 	__le16  i_mode;         /// File mode
 	__le16  i_uid;          /// Low 16 bits of Owner Uid
@@ -401,14 +414,6 @@ struct ext4_inode
 	__le16  l_i_gid_high;   /// ditto
 	__le16  l_i_checksum_lo; /// crc32c(uuid+inum+inode) LE
 	__le16  l_i_reserved;   ///
-	__le16  i_extra_isize;  ///
-	__le16  i_checksum_hi;  /// crc32c(uuid+inum+inode) BE
-	__le32  i_ctime_extra;  /// extra Change time      (nsec << 2 | epoch)
-	__le32  i_mtime_extra;  /// extra Modification time(nsec << 2 | epoch)
-	__le32  i_atime_extra;  /// extra Access time      (nsec << 2 | epoch)
-	__le32  i_crtime;       /// File Creation time
-	__le32  i_crtime_extra; /// extra FileCreationtime (nsec << 2 | epoch)
-	__le32  i_version_hi;   /// high 32 bits for 64-bit version
 
 	@property Mode mode() const pure nothrow
 	{
@@ -425,6 +430,23 @@ struct ext4_inode
 			return i_size_lo;
 	}
 }
+static assert(ext3_inode.sizeof == 128);
+
+///
+struct ext4_inode
+{
+	ext3_inode _base;
+	alias _base this;
+
+	__le16  i_extra_isize;  ///
+	__le16  i_checksum_hi;  /// crc32c(uuid+inum+inode) BE
+	__le32  i_ctime_extra;  /// extra Change time      (nsec << 2 | epoch)
+	__le32  i_mtime_extra;  /// extra Modification time(nsec << 2 | epoch)
+	__le32  i_atime_extra;  /// extra Access time      (nsec << 2 | epoch)
+	__le32  i_crtime;       /// File Creation time
+	__le32  i_crtime_extra; /// extra FileCreationtime (nsec << 2 | epoch)
+	__le32  i_version_hi;   /// high 32 bits for 64-bit version
+	}
 
 enum EXT4_EPOCH_BITS = 2;
 enum EXT4_EPOCH_MASK = (1UL << EXT4_EPOCH_BITS) - 1;

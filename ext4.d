@@ -281,14 +281,14 @@ class Ext4
 	@property uint blockSize() const { return _blockSize; }
 
 private:
-	CachedStruct!ext4_group_desc readGroupDesc(ulong groupNum)
+	CachedStruct!ext3_group_desc readGroupDesc(ulong groupNum)
 	{
 		auto descSize = _superBlock.desc_size;
 		auto groupDescsPerBlock = _blockSize / descSize;
 		assert(groupDescsPerBlock * descSize == _blockSize);
 		ulong blockNum = _superBlockIndex + 1 + groupNum / groupDescsPerBlock;
 		ulong offset = groupNum % groupDescsPerBlock * descSize;
-		return _cache.requestStruct!ext4_group_desc(blockNum, offset);
+		return _cache.requestStruct!ext3_group_desc(blockNum, offset);
 	}
 
 	auto getInodeLocation(ulong inodeNum)
@@ -305,12 +305,12 @@ private:
 		return Tuple!(ulong, "blockNum", uint, "offset")(blockNum, offset);
 	}
 
-	CachedStruct!ext4_inode readInode(ulong inodeNum)
+	CachedStruct!ext3_inode readInode(ulong inodeNum)
 	{
 		auto loc = getInodeLocation(inodeNum);
 		if (!loc.blockNum)
-			_cache.requestStruct!ext4_inode();
-		return _cache.requestStruct!ext4_inode(loc.blockNum, loc.offset);
+			_cache.requestStruct!ext3_inode();
+		return _cache.requestStruct!ext3_inode(loc.blockNum, loc.offset);
 	}
 
 	BlockCache _cache;
