@@ -238,18 +238,6 @@ struct ext4_super_block
 enum EXT4_S_ERR_START = ext4_super_block.s_error_count.offsetof;
 enum EXT4_S_ERR_END   = ext4_super_block.s_mount_opts.offsetof;
 
-///
-enum EXT4_NAME_LEN = 255;
-
-/// Structure of a directory entry
-struct ext4_dir_entry
-{
-	__le32  inode;                  /* Inode number */
-	__le16  rec_len;                /* Directory entry length */
-	__le16  name_len;               /* Name length */
-	char    name[EXT4_NAME_LEN];    /* File name */
-}
-
 /**
  The new version of the directory entry.  Since EXT4 structures are
  stored in intel byte order, and the name_len field could never be
@@ -258,11 +246,36 @@ struct ext4_dir_entry
 */
 struct ext4_dir_entry_2
 {
+	enum Type : __u8
+	{
+		unknown = 0,
+		file = 1,
+		dir = 2,
+		chrdev = 3,
+		blkdev = 4,
+		fifo = 5,
+		socket = 6,
+		symlink = 7,
+		max = 8,
+		dir_csum = 0xde,
+	}
+
 	__le32  inode;                  /// Inode number
 	__le16  rec_len;                /// Directory entry length
 	__u8    name_len;               /// Name length
-	__u8    file_type;              /// File type
-	char    name[EXT4_NAME_LEN];    /// File name
+	Type    file_type;              /// File type
+	private char[0] _name;
+
+	/// File name
+	@property const(char)[] name() const
+	{
+		// It is safe to extend the _name array as long as name_len is correct,
+		// because directory entries never cross filesystem block boundaries
+		// and we always map entire blocks.
+		// TODO: handle cases where name_len is invalid and the slice would
+		// overrun the mapped block.
+		return _name.ptr[0 .. name_len].idup;
+	}
 }
 
 /// Structure of a blocks group descriptor (ext3)
@@ -316,19 +329,19 @@ enum
 	EXT4_N_BLOCKS    = (EXT4_TIND_BLOCK + 1),
 }
 
-enum FileType : uint
-{
-	fifo = 1,
-	chrdev = 2,
-	dir = 4,
-	blkdev = 6,
-	reg = 8,
-	link = 10,
-	socket = 12
-}
-
 struct Mode
 {
+	enum Type : uint
+	{
+		fifo = 1,
+		chrdev = 2,
+		dir = 4,
+		blkdev = 6,
+		file = 8,
+		symlink = 10,
+		socket = 12
+	}
+
 	union
 	{
 		mixin(bitfields!(
@@ -336,7 +349,7 @@ struct Mode
 			bool, "sticky", 1,
 			bool, "setguid", 1,
 			bool, "setuid", 1,
-			FileType, "type", 4));
+			Type, "type", 4));
 		__u16 mode;
 	}
 
@@ -344,19 +357,19 @@ struct Mode
 	{
 		switch (type)
 		{
-		case FileType.fifo:
+		case Mode.Type.fifo:
 			sink("FIFO"); break;
-		case FileType.chrdev:
+		case Mode.Type.chrdev:
 			sink("CDEV"); break;
-		case FileType.blkdev:
+		case Mode.Type.blkdev:
 			sink("BDEV"); break;
-		case FileType.reg:
+		case Mode.Type.file:
 			sink("FILE"); break;
-		case FileType.link:
+		case Mode.Type.symlink:
 			sink("LINK"); break;
-		case FileType.dir:
+		case Mode.Type.dir:
 			sink("DIR "); break;
-		case FileType.socket:
+		case Mode.Type.socket:
 			sink("SOCK"); break;
 		default:
 			sink("????"); break;
@@ -424,7 +437,7 @@ struct ext3_inode
 
 	@property ulong size() const pure nothrow
 	{
-		if (mode.type == FileType.reg)
+		if (mode.type == Mode.Type.file)
 			return bitCat(i_size_high, i_size_lo);
 		else
 			return i_size_lo;
@@ -446,7 +459,7 @@ struct ext4_inode
 	__le32  i_crtime;       /// File Creation time
 	__le32  i_crtime_extra; /// extra FileCreationtime (nsec << 2 | epoch)
 	__le32  i_version_hi;   /// high 32 bits for 64-bit version
-	}
+}
 
 enum EXT4_EPOCH_BITS = 2;
 enum EXT4_EPOCH_MASK = (1UL << EXT4_EPOCH_BITS) - 1;
