@@ -1,4 +1,4 @@
-﻿/**
+/**
 	Open an ext[234] file system and load various types of data structures.
 
 	Copyright:
@@ -9,12 +9,12 @@
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
 	(at your option) any later version.
-	
+
 	ext4rescue is distributed in the hope that it will be useful,
 	but WITHOUT ANY WARRANTY; without even the implied warranty of
 	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 	GNU General Public License for more details.
-	
+
 	You should have received a copy of the GNU General Public License
 	along with ext4rescue.  If not, see $(LINK http://www.gnu.org/licenses/).
 */
@@ -25,13 +25,14 @@ import std.exception;
 import std.format;
 import std.stdio;
 import std.typecons;
+import std.algorithm;
 
 import bits;
 import blockcache;
 import ddrescue;
 import defs;
 
-private ulong getFileSize(const(char)[] name)
+ulong getFileSize(const(char)[] name)
 {
 	auto file = File(name.idup, "rb");
 	file.seek(0, SEEK_END);
@@ -54,6 +55,7 @@ struct ExtentRange
 	this(Ext4 ext4, ulong inodeNum)
 	{
 		_ext4 = ext4;
+		_inodeNum = inodeNum;
 		// root entries are inside the inode itself
 		auto loc = _ext4.getInodeLocation(inodeNum);
 		ulong blockNum = loc.blockNum;
@@ -96,7 +98,7 @@ struct ExtentRange
 				CachedStruct!ext4_extent ext = _ext4._cache.requestStruct!ext4_extent(
 					_treePath.top.blockNum,
 					_treePath.top.arrayOffset + _treePath.top.nodeIndex * ext4_extent_idx.sizeof);
-				_current = Extent(bitCat(ext.ee_start_hi, ext.ee_start_lo), ext.ee_len, ext.ee_block, ext.ok);
+				_current = Extent(ext.start, ext.len, ext.logicalBlockNum, ext.ok);
 				break;
 			}
 			else
@@ -148,6 +150,7 @@ private:
 		uint nodeIndex;   // current entry within this node
 	}
 
+	ulong _inodeNum;
 	Extent _current;
 	Stack!Node _treePath;
 	Ext4 _ext4;
@@ -225,6 +228,53 @@ class Ext4
 		enforce(_inodesPerBlock * _superBlock.s_inode_size == blockSize);
 	}
 
+	struct Inode
+	{
+		this(Ext4 ext4, uint inodeNum)
+		{
+			this.ext4 = ext4;
+			this.inodeNum = inodeNum;
+			this.inodeStruct = ext4.readInode(inodeNum);
+		}
+
+		/// Number of disk blocks (i.e. blocks of fixed size == 512B) allocated to this file,
+		/// as reported in the inode.
+		@property ulong blockCount()
+		{
+			if (!ext4._superBlock.s_feature_ro_compat_huge_file)
+				return inodeStruct.i_blocks_lo;
+			if (!inodeStruct.i_flags_huge_file)
+				return bitCat(inodeStruct.l_i_blocks_high, inodeStruct.i_blocks_lo);
+			// if huge_file flag is set in super block AND inode, block count is in filesystem blocks.
+			return bitCat(inodeStruct.l_i_blocks_high, inodeStruct.i_blocks_lo) << (1 + ext4._superBlock.s_log_block_size);
+		}
+
+		@property ExtentRange extents()
+		{
+			return ExtentRange(ext4, inodeNum);
+		}
+
+		/// true if entire map can be read
+		bool checkMapValidity()
+		{
+			auto range = extents;
+			if (!range.ok)
+				return false;
+			foreach (extent; range)
+			{
+				if (!extent.ok)
+					return false;
+			}
+			return true;
+		}
+
+		Ext4 ext4;
+		uint inodeNum;
+		CachedStruct!ext3_inode inodeStruct;
+
+		alias inodeStruct this;
+	}
+
 	/** Access _inodes.
 	 *  Examples:
 	 *  --------------
@@ -244,26 +294,26 @@ class Ext4
 	{
 		static struct Inodes
 		{
-			@property ulong length() { return _ext4._superBlock.s_inodes_count; }
+			@property uint length() { return _ext4._superBlock.s_inodes_count; }
 
 			auto opSlice() { return Range(_ext4); }
 
-			auto opSlice(ulong begin, ulong end) { return Range(_ext4, begin, end); }
+			auto opSlice(uint begin, uint end) { return Range(_ext4, begin, end); }
 
-			auto opIndex(ulong inodeNum) { return _ext4.readInode(inodeNum); }
+			auto opIndex(uint inodeNum) { return Inode(_ext4, inodeNum); }
 
 			static struct Range
 			{
 				private Ext4 _ext4;
-				ulong _current;
-				ulong _end;
+				uint _current;
+				uint _end;
 
-				this(Ext4 ext4, ulong begin = 1, ulong end = ulong.max)
+				this(Ext4 ext4, uint begin = 1, uint end = uint.max)
 				{
 					_ext4 = ext4;
-					ulong inodeCount = _ext4._superBlock.s_inodes_count;
+					uint inodeCount = _ext4._superBlock.s_inodes_count;
 					enforce(begin >= 1, "Invalid inode range begin");
-					if (end == ulong.max)
+					if (end == uint.max)
 						end = inodeCount + 1;
 					else
 						enforce(end <= inodeCount + 1, "Invalid inode range end");
@@ -271,10 +321,10 @@ class Ext4
 					_end = end;
 					_current = begin;
 				}
-			
+
 				@property bool empty() const nothrow { return _current >= _end; }
 				@property void popFront() nothrow { ++_current; }
-				auto front() { return _ext4.readInode(_current); }
+				auto front() { return Inode(_ext4, _current); }
 			}
 
 		private:
@@ -284,11 +334,6 @@ class Ext4
 		}
 
 		return Inodes(this);
-	}
-
-	ExtentRange getExtentsForInode(ulong inodeNum)
-	{
-		return ExtentRange(this, inodeNum);
 	}
 
 	/** The currently used super block.

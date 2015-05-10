@@ -20,6 +20,7 @@
 */
 module main;
 
+import std.array;
 import std.stdio;
 
 import blockcache;
@@ -36,10 +37,14 @@ void main(string[] args)
 	writefln("Block size:   %12s", ext4.blockSize);
 	writefln("Inode count:  %12s", ext4.inodes.length);
 	ulong validInodeCount;
-	foreach (inodeStruct; ext4.inodes[])
+	foreach (inode; ext4.inodes[])
 	{
-		if (inodeStruct.ok && inodeStruct.i_mode)
+		if (inode.ok && inode.i_mode)
+		{
 			++validInodeCount;
+			if (!inode.i_dtime)
+				writeln(inode.extents.array());
+		}
 	}
 	writefln("Valid inodes: %12s", validInodeCount);
 }

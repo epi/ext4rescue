@@ -402,7 +402,36 @@ struct ext3_inode
 	__le16  i_gid;          /// Low 16 bits of Group Id
 	__le16  i_links_count;  /// Links count
 	__le32  i_blocks_lo;    /// Blocks count
-	__le32  i_flags;        /// File flags
+	union {
+		__le32  i_flags;    /// File flags
+		mixin(bitfields!(
+			bool, "i_flags_secrm", 1,
+			bool, "i_flags_unrm", 1,
+			bool, "i_flags_compr", 1,
+			bool, "i_flags_sync", 1,
+
+			bool, "i_flags_immutable", 1,
+			bool, "i_flags_append", 1,
+			bool, "i_flags_nodump", 1,
+			bool, "i_flags_noatime", 1,
+
+			bool, "i_flags_dirty", 1,
+			bool, "i_flags_comprblk", 1,
+			bool, "i_flags_nocompr", 1,
+			bool, "i_flags_encrypt", 1,
+
+			bool, "i_flags_index", 1,
+			bool, "i_flags_imagic", 1,
+			bool, "i_flags_journal_data", 1,
+			bool, "i_flags_notail", 1,
+
+			bool, "i_flags_dirsync", 1,
+			bool, "i_flags_topdir", 1,
+			bool, "i_flags_huge_file", 1,
+			bool, "i_flags_extents", 1,
+
+			uint, "i_flags___reserved1", 12));
+	}
 	__le32  l_i_version;    ///
 	union
 	{
@@ -468,6 +497,29 @@ enum EXT4_NSEC_MASK  = (~0UL << EXT4_EPOCH_BITS);
 /// This is the extent on-disk structure. It's used at the bottom of the tree.
 struct ext4_extent
 {
+	@property uint logicalBlockNum() const pure nothrow
+	{
+		return ee_block;
+	}
+
+	@property ulong start() const pure nothrow
+	{
+		return bitCat(ee_start_hi, ee_start_lo);
+	}
+
+	@property uint len() const pure nothrow
+	{
+		if (initialized)
+			return ee_len;
+		return ee_len - 0x8000;
+	}
+
+	@property bool initialized() const pure nothrow
+	{
+		return ee_len <= 0x8000;
+	}
+
+private:
 	__le32  ee_block;       /// first logical block extent covers
 	__le16  ee_len;         /// number of blocks covered by extent
 	__le16  ee_start_hi;    /// high 16 bits of physical block
