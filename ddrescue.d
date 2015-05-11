@@ -4,7 +4,7 @@
 
 	See_Also:
 	$(LINK http://www.gnu.org/software/ddrescue/)
-	
+
 	Copyright:
 	This file is part of ext4rescue $(LINK https://github.com/epi/ext4rescue)
 	Copyright (C) 2014 Adrian Matoga
@@ -13,12 +13,12 @@
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
 	(at your option) any later version.
-	
+
 	ext4rescue is distributed in the hope that it will be useful,
 	but WITHOUT ANY WARRANTY; without even the implied warranty of
 	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 	GNU General Public License for more details.
-	
+
 	You should have received a copy of the GNU General Public License
 	along with ext4rescue.  If not, see $(LINK http://www.gnu.org/licenses/).
 */
@@ -28,6 +28,7 @@ import std.algorithm;
 import std.array;
 import std.exception;
 import std.format;
+import std.random;
 import std.range;
 import std.string;
 import std.traits;
@@ -38,9 +39,10 @@ struct Region
 	ulong position;
 	ulong size;
 	bool  good;
-	
+
+	alias begin = position;
 	@property ulong end() const pure nothrow { return position + size; }
-	
+
 	/// _ddrescue-like text representation
 	string toString() const
 	{
@@ -116,6 +118,37 @@ Region[] parseLog(R)(R lines) if (isSomeString!(ElementType!R))
 		regions ~= Region(position, size, status == '+');
 	}
 	return regions;
+}
+
+Region[] addRandomDamage(ref Region[] regions, ulong count, ulong maxLength)
+{
+	auto rnd = Random(1);
+	auto imageLength = regions[$ - 1].end / 512;
+
+	Region[] result;
+	while (count--)
+	{
+		import std.stdio;
+		ulong length = uniform(0, maxLength, rnd);
+		ulong begin = uniform(0, imageLength - length, rnd);
+		length *= 512;
+		begin *= 512;
+		ulong end = begin + length;
+		size_t bpos = locate(regions, begin);
+		size_t epos = locate(regions, begin + length);
+		result = regions[0 .. bpos];
+		if (begin != regions[bpos].begin)
+			result ~= Region(regions[bpos].begin, begin - regions[bpos].begin, regions[bpos].good);
+		result ~= Region(begin, length, false);
+		if (end != regions[epos].end)
+		{
+			ulong overlapLength = regions[epos].end - end;
+			result ~= Region(regions[epos].end - overlapLength, overlapLength, regions[epos].good);
+		}
+		result ~= regions[epos + 1 .. $];
+		regions = result;
+	}
+	return result;
 }
 
 unittest
