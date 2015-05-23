@@ -20,31 +20,31 @@
 */
 module main;
 
-import std.array;
-import std.stdio;
-
-import blockcache;
-import ddrescue;
-import defs;
 import ext4;
+import ddrescue;
+import rescue;
+
+import std.algorithm;
+import std.bitmanip;
+import std.container.rbtree;
+import std.format;
+import std.stdio;
 
 void main(string[] args)
 {
 	Region[] regions;
 	if (args.length > 2)
 		regions = parseLog(File(args[2]).byLine());
+	if (regions.length == 0)
+		regions ~= Region(0, getFileSize(args[1]), true);
+	writeln(regions);
+	//regions = regions.addRandomDamage(30, 1024);
+	writeln(regions);
 	scope ext4 = new Ext4(args[1], regions);
 	writefln("Block size:   %12s", ext4.blockSize);
 	writefln("Inode count:  %12s", ext4.inodes.length);
 	ulong validInodeCount;
-	foreach (inode; ext4.inodes[])
-	{
-		if (inode.ok && inode.i_mode)
-		{
-			++validInodeCount;
-			if (!inode.i_dtime)
-				writeln(inode.extents.array());
-		}
-	}
-	writefln("Valid inodes: %12s", validInodeCount);
+	ext4.superBlock.dump();
+	auto rescue = new Rescue(ext4);
+	rescue.scan();
 }
