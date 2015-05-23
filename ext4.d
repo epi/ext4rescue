@@ -25,7 +25,6 @@ import std.exception;
 import std.format;
 import std.stdio;
 import std.typecons;
-import std.algorithm;
 
 import bits;
 import blockcache;
@@ -191,6 +190,73 @@ struct Extent
 	}
 }
 
+struct DirIterator
+{
+	this(Ext4 ext4, uint inodeNum)
+	{
+		_cache = ext4._cache;
+		_extentRange = ext4.inodes[inodeNum].extents;
+		nextExtent();
+		if (!empty)
+			_current = _cache.requestStruct!ext4_dir_entry_2(_currentExtent.start, _offset);
+	}
+
+	@property bool empty() const pure nothrow
+	{
+		return _currentExtent.length == 0;
+	}
+
+	@property auto front()
+	{
+		assert(!empty);
+		return _current;
+	}
+
+	@property void popFront()
+	{
+		if (_current.ok)
+		{
+			_offset += front.rec_len;
+			if (_offset < _cache.blockSize)
+			{
+				_current = _cache.requestStruct!ext4_dir_entry_2(_currentExtent.start, _offset);
+				return;
+			}
+		}
+		nextBlock();
+	}
+
+private:
+	void nextBlock()
+	{
+		if (--_currentExtent.length > 0)
+			++_currentExtent.start;
+		else
+			nextExtent();
+		_offset = 0;
+		_current = _cache.requestStruct!ext4_dir_entry_2(_currentExtent.start, _offset);
+	}
+
+	void nextExtent()
+	{
+		if (!_extentRange.empty)
+		{
+			_currentExtent = _extentRange.front;
+			_extentRange.popFront();
+		}
+		else
+		{
+			_currentExtent.length = 0;
+		}
+	}
+
+	CachedStruct!ext4_dir_entry_2 _current;
+	Extent _currentExtent;
+	ExtentRange _extentRange;
+	BlockCache _cache;
+	uint _offset;
+}
+
 /// Provides access to ext4 file system structures.
 class Ext4
 {
@@ -247,6 +313,11 @@ class Ext4
 				return bitCat(inodeStruct.l_i_blocks_high, inodeStruct.i_blocks_lo);
 			// if huge_file flag is set in super block AND inode, block count is in filesystem blocks.
 			return bitCat(inodeStruct.l_i_blocks_high, inodeStruct.i_blocks_lo) << (1 + ext4._superBlock.s_log_block_size);
+		}
+
+		DirIterator readAsDir()
+		{
+			return DirIterator(ext4, inodeNum);
 		}
 
 		@property ExtentRange extents()
@@ -384,4 +455,128 @@ private:
 	ulong _superBlockIndex;
 	uint _inodesPerBlock;
 	uint _blockSize;
+}
+
+version(unittest)
+{
+	// libguestfs declarations
+	struct guestfs_h {}
+
+	extern(C) guestfs_h* guestfs_create();
+	extern(C) void guestfs_close(guestfs_h* g);
+	extern(C) int guestfs_add_drive(guestfs_h* g, const(char)* filename);
+	extern(C) int guestfs_launch(guestfs_h* g);
+	extern(C) int guestfs_mount(guestfs_h* g, const(char)* device, const(char)* mountpoint);
+	extern(C) int guestfs_touch(guestfs_h* g, const(char)* path);
+	extern(C) int guestfs_mkdir(guestfs_h* g, const(char)* path);
+	extern(C) int guestfs_mkdir_mode(guestfs_h* g, const(char)* path, int mode);
+	extern(C) int guestfs_mkdir_p(guestfs_h* g, const(char)* path);
+	extern(C) int guestfs_umount(guestfs_h* g, const(char)* pathordevice);
+	extern(C) int guestfs_umount_all(guestfs_h* g);
+	extern(C) int guestfs_upload(guestfs_h* g, const(char)* filename, const(char)* remotefilename);
+	extern(C) const(char)* guestfs_last_error(guestfs_h* g);
+
+	pragma(lib, "guestfs");
+
+	class GuestfsException : Exception
+	{
+		this(string msg = null, string file = __FILE__, ulong line = cast(ulong) __LINE__, Throwable next = null)
+		{
+			super(msg, file, line, next);
+		}
+	}
+
+	class Guestfs
+	{
+		guestfs_h* g;
+
+		this()
+		{
+			g = enforce(guestfs_create, "Failed to create handle");
+		}
+
+		~this()
+		{
+			finalize();
+		}
+
+		void finalize()
+		{
+			if (g)
+			{
+				guestfs_umount_all(g);
+				guestfs_close(g);
+				g = null;
+			}
+		}
+
+		void opDispatch(string op, T...)(T args)
+		{
+			this.enforce(mixin("guestfs_" ~ op)(g, args) == 0);
+		}
+
+		T enforce(T)(T value, lazy const(char)[] msg = null, string file = __FILE__, ulong line =  cast(ulong) __LINE__)
+		{
+			if (!!value)
+				return value;
+			throw new GuestfsException(msg ? msg.idup : (g ? guestfs_last_error(g).toString() : ""), file, line);
+		}
+	}
+
+	string toString(const(char)* str)
+	{
+		import core.stdc.string : strlen;
+		return str[0 .. strlen(str)].idup;
+	}
+
+	import std.file : remove;
+	import std.process : wait, spawnProcess, thisProcessID;
+	import std.string : toStringz;
+
+	string createTestFilesystem(uint sizeMB, uint blockSize, void delegate(Guestfs g) populate)
+	{
+		auto fileName = "/tmp/ext4rescue.test." ~ to!string(thisProcessID);
+		scope(failure) remove(fileName);
+
+		wait(spawnProcess([ "dd", "if=/dev/zero", text("of=", fileName), "bs=1M", text("count=", sizeMB) ]));
+		wait(spawnProcess([ "mkfs.ext4", "-F", "-b", to!string(blockSize), fileName ]));
+
+		auto g = new Guestfs();
+		scope(exit) g.finalize();
+
+		g.add_drive(fileName.toStringz());
+		g.launch();
+
+		g.mount("/dev/sda".ptr, "/".ptr);
+
+		populate(g);
+
+		return fileName;
+	}
+}
+
+unittest
+{
+	auto fsname = createTestFilesystem(128, 4096, (Guestfs g) {
+		g.mkdir("/foobar".ptr);
+	});
+	scope(exit) remove(fsname);
+	Region[] regions;
+	scope ext4 = new Ext4(fsname, regions);
+	DirIterator di = ext4.inodes[2].readAsDir();
+	assert(di.front.name == ".");
+	assert(di.front.inode == 2);
+	assert(di.front.file_type == ext4_dir_entry_2.Type.dir);
+	di.popFront();
+	assert(di.front.name == "..");
+	assert(di.front.inode == 2);
+	assert(di.front.file_type == ext4_dir_entry_2.Type.dir);
+	di.popFront();
+	assert(di.front.name == "lost+found");
+	assert(di.front.file_type == ext4_dir_entry_2.Type.dir);
+	di.popFront();
+	assert(di.front.name == "foobar");
+	assert(di.front.file_type == ext4_dir_entry_2.Type.dir);
+	di.popFront();
+	assert(di.empty);
 }
