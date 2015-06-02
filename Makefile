@@ -1,10 +1,11 @@
-all_modules  := bits blockcache ddrescue defs ext4 rescue
-test_modules := bits blockcache ddrescue ext4
+all_modules  := bits blockcache ddrescue defs ext4 rescue/file rescue/scan
+test_modules := bits blockcache ddrescue rescue/file
 docdir       := doc
 
 all_sources  := $(foreach m,$(all_modules),$(m).d)
-test_progs   := $(foreach m,$(test_modules),test-$(m))
-test_targets := $(foreach m,$(test_modules),$(m).lst)
+test_progs   := $(subst /,-,$(foreach m,$(test_modules),test-$(m)))
+test_targets := $(subst /,-,$(foreach m,$(test_modules),$(m).lst))
+test_prog_objs := $(addsuffix .o,$(test_progs))
 
 all: ext4rescue
 all: DFLAGS = -release -inline
@@ -31,6 +32,9 @@ test.a: $(all_sources)
 test-%: %.d testmain.d test.a
 	dmd -g -debug -unittest -cov $^ -of$@
 
+test-rescue-%: rescue/%.d testmain.d test.a
+	dmd -g -debug -unittest -cov $^ -of$@
+
 testmain.d:
 	echo "void main() {}" >$@
 
@@ -42,7 +46,7 @@ README.html: README.md
 	markdown $< >$@
 
 clean:
-	rm -f ext4rescue testmain.d testmain.lst test.a $(test_targets)
+	rm -f ext4rescue testmain.d testmain.lst test.a $(test_targets) $(test_progs) $(test_prog_objs)
 	rm -f doc/*.html
 .PHONY: clean
 

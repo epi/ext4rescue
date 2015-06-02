@@ -22,7 +22,7 @@ module main;
 
 import ext4;
 import ddrescue;
-import rescue;
+import rescue.scan;
 
 import std.algorithm;
 import std.bitmanip;
@@ -37,14 +37,16 @@ void main(string[] args)
 		regions = parseLog(File(args[2]).byLine());
 	if (regions.length == 0)
 		regions ~= Region(0, getFileSize(args[1]), true);
-	writeln(regions);
 	//regions = regions.addRandomDamage(30, 1024);
-	writeln(regions);
+	debug writeln(regions);
 	scope ext4 = new Ext4(args[1], regions);
 	writefln("Block size:   %12s", ext4.blockSize);
 	writefln("Inode count:  %12s", ext4.inodes.length);
 	ulong validInodeCount;
-	ext4.superBlock.dump();
-	auto rescue = new Rescue(ext4);
-	rescue.scan();
+	debug ext4.superBlock.dump();
+	auto scanner = new Scanner(ext4);
+	scanner.scan((uint current, uint total) {
+		stdout.writef("Scanning inodes and directories... %3d%%\r", current * 100UL / total);
+		stdout.flush();
+	});
 }
