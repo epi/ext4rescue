@@ -466,6 +466,9 @@ class BlockCache
 		return CachedStruct!S();
 	}
 
+	///
+	@property const(Region[]) ddrescueLog() const { return _ddrescueLog; }
+
 	/// Size of a block in bytes.
 	@property uint blockSize() const { return _blockSize; }
 

@@ -32,7 +32,10 @@ abstract class SomeFile
 	uint linkCount;
 	ulong byteCount;
 	ulong size;
+	ulong mappedByteCount;
+	ulong readableByteCount;
 	bool inodeIsOk;
+	bool blockMapIsOk;
 
 	this(uint inodeNum)
 	{
@@ -158,17 +161,25 @@ class NamingVisitor : FileVisitor
 
 class ProblemDescriptionVisitor : FileVisitor
 {
-	private bool checkInode(SomeFile ri)
+	private bool checkCommon(SomeFile sf)
 	{
 		problems.length = 0;
-		if (!ri.inodeIsOk)
+		if (!sf.inodeIsOk)
+		{
 			problems ~= "Inode could not be read";
-		return ri.inodeIsOk;
+			return false;
+		}
+		if (!sf.blockMapIsOk)
+			problems ~= "Block map or extent tree is damaged";
+		if (sf.mappedByteCount != sf.readableByteCount)
+			problems ~= format("Only %d of %d (%g%%) reachable data bytes are readable",
+				sf.readableByteCount, sf.mappedByteCount, sf.readableByteCount * 100.0 / sf.mappedByteCount);
+		return true;
 	}
 
 	void visit(Directory d)
 	{
-		if (!checkInode(d))
+		if (!checkCommon(d))
 			return;
 		if (d.parent is null)
 			problems ~= "Parent not known";
@@ -182,12 +193,12 @@ class ProblemDescriptionVisitor : FileVisitor
 
 	void visit(RegularFile f)
 	{
-		if (!checkInode(f))
+		if (!checkCommon(f))
 			return;
 		if (f.links.length == 0)
 			problems ~= "No link found";
 		else if (f.links.length < f.linkCount)
-			problems ~= "Some links not found";
+			problems ~= format("Only %d of %d links found", f.links.length, f.linkCount);
 	}
 
 	string[] problems;

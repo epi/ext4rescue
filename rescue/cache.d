@@ -57,9 +57,9 @@ private string getCacheFileName(string imageName, string ddrescueLogName)
 	return buildPath("~", ".ext4rescue", filename).expandTilde();
 }
 
-private enum cacheVersion = 10000;
-private enum cacheMinimumVersion = 10000;
-private enum cacheMaximumVersion = 10000;
+private enum cacheVersion = 10001;
+private enum cacheMinimumVersion = 10001;
+private enum cacheMaximumVersion = 10001;
 
 private class CacheWriter : FileVisitor
 {
@@ -72,8 +72,9 @@ private class CacheWriter : FileVisitor
 
 	private void writeCommon(SomeFile sf, char type)
 	{
-		outfile.writef("%s/%d/%d/%d/%d/%d",
-			type, sf.inodeNum, sf.linkCount, sf.byteCount, sf.size, sf.inodeIsOk);
+		outfile.writef("%s/%d/%d/%d/%d/%d/%d/%d/%d",
+			type, sf.inodeNum, sf.linkCount, sf.byteCount, sf.size, sf.inodeIsOk,
+			sf.blockMapIsOk, sf.mappedByteCount, sf.readableByteCount);
 	}
 
 	void visit(Directory d)
@@ -121,14 +122,17 @@ private void readCommon(SomeFile sf, in char[][] fields)
 	sf.byteCount = to!ulong(fields[2]);
 	sf.size = to!ulong(fields[3]);
 	sf.inodeIsOk = !!to!uint(fields[4]);
+	sf.blockMapIsOk = !!to!uint(fields[5]);
+	sf.mappedByteCount = to!ulong(fields[6]);
+	sf.readableByteCount = to!ulong(fields[7]);
 }
 
 private void readRegularFile(FileTree fileTree, in char[][] fields)
 {
-	enforce(fields.length >= 5 && (fields.length & 1), "invalid regular file entry");
+	enforce(fields.length >= 8 && !(fields.length & 1), "invalid regular file entry");
 	auto r = fileTree.get!RegularFile(to!uint(fields[0]));
 	readCommon(r, fields);
-	for (size_t i = 5; i < fields.length; i += 2)
+	for (size_t i = 8; i < fields.length; i += 2)
 	{
 		uint parentInodeNum = to!uint(fields[i]);
 		r.links ~= RegularFile.Link(
@@ -139,14 +143,14 @@ private void readRegularFile(FileTree fileTree, in char[][] fields)
 
 private void readDirectory(FileTree fileTree, in char[][] fields)
 {
-	enforce(fields.length == 9, "invalid directory entry");
+	enforce(fields.length == 12, "invalid directory entry");
 	auto d = fileTree.get!Directory(to!uint(fields[0]));
 	readCommon(d, fields);
-	uint parentInodeNum = to!uint(fields[5]);
+	uint parentInodeNum = to!uint(fields[8]);
 	d.parent = parentInodeNum == 0 ? null : fileTree.get!Directory(parentInodeNum);
-	d.subdirectoryCount = to!uint(fields[6]);
-	d.parentMismatch = !!to!uint(fields[7]);
-	d.name = fields[8].idup;
+	d.subdirectoryCount = to!uint(fields[9]);
+	d.parentMismatch = !!to!uint(fields[10]);
+	d.name = fields[11].idup;
 }
 
 static this()

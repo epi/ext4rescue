@@ -91,6 +91,46 @@ bool allGood(in Region[] regions, ulong begin, ulong end)
 	return allGood(regions[bpos .. epos + 1]);
 }
 
+/// Returns number of readable bytes within file position range [begin, end).
+ulong countReadableBytes(in Region[] regions, ulong begin, ulong end)
+in
+{
+	assert(regions.length >= 1);
+	assert(begin >= regions[0].begin);
+	assert(begin <= end);
+	assert(end <= regions[$ - 1].end);
+}
+out(result)
+{
+	assert(result <= end - begin);
+}
+body
+{
+	if (begin == end)
+		return 0;
+	size_t bpos = locate(regions, begin);
+	size_t epos = locate(regions, end - 1);
+	if (bpos == epos)
+		return regions[bpos].good ? end - begin : 0;
+	ulong result = 0;
+	if (regions[bpos].good)
+		result += regions[bpos].end - begin;
+	foreach (region; regions[bpos + 1 .. epos])
+	{
+		if (region.good)
+			result += region.size;
+	}
+	if (regions[epos].good)
+		result += end - regions[epos].begin;
+	return result;
+}
+
+/// Returns number of bytes within file position range [begin, end) which are bad.
+ulong countUnreadableBytes(in Region[] regions, ulong begin, ulong end)
+{
+	return end - begin - countReadableBytes(regions, begin, end);
+}
+
 /// Parses a ddrescue log file, returning an array of regions.
 Region[] parseLog(R)(R lines) if (isSomeString!(ElementType!R))
 {

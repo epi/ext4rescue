@@ -25,6 +25,7 @@ import std.exception;
 
 import bits;
 import blockcache;
+import ddrescue;
 import defs;
 import ext4;
 import rescue.file;
@@ -113,9 +114,36 @@ FileTree scan(Ext4 ext4, bool delegate(uint current, uint total) progressDg = nu
 				setFileProperties(reg, inode);
 				sf = reg;
 			}
+			if (sf)
+				checkDataReadability(sf, ext4);
 		}
 	}
 	if (progressDg)
 		progressDg(total, total);
 	return fileTree;
+}
+
+private void checkDataReadability(SomeFile sf, Ext4 ext4)
+{
+	sf.mappedByteCount = 0;
+	sf.readableByteCount = 0;
+	auto range = ext4.inodes[sf.inodeNum].extents;
+	if (!range.ok)
+	{
+		sf.blockMapIsOk = false;
+		return;
+	}
+	sf.blockMapIsOk = true;
+	foreach (Extent extent; range)
+	{
+		if (!extent.ok)
+			sf.blockMapIsOk = false;
+		else
+		{
+			sf.mappedByteCount += ext4.blockSize * extent.length;
+			sf.readableByteCount += ext4.cache.ddrescueLog.countReadableBytes(
+				extent.start * ext4.blockSize,
+				(extent.start + extent.length) * ext4.blockSize);
+		}
+	}
 }

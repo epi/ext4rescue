@@ -407,6 +407,9 @@ class Ext4
 		return Inodes(this);
 	}
 
+	///
+	@property const(BlockCache) cache() const { return _cache; }
+
 	/** The currently used super block.
 	 *  See_Also:
 	 *   $(LINK2 blockcache.html#CachedStruct, CachedStruct)
