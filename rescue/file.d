@@ -20,6 +20,8 @@
 */
 module rescue.file;
 
+import std.conv;
+import std.exception;
 import std.format;
 import std.path;
 
@@ -77,6 +79,7 @@ class Directory : SomeFile
 	mixin AcceptVisitor;
 }
 
+///
 class RegularFile : SomeFile
 {
 	static struct Link
@@ -88,6 +91,26 @@ class RegularFile : SomeFile
 
 	mixin BasicCtor;
 	mixin AcceptVisitor;
+}
+
+///
+class FileTree
+{
+	SomeFile[uint] filesByInodeNum;
+
+	private T get(T = SomeFile)(uint inodeNum)
+		if (is(T : SomeFile))
+	{
+		SomeFile file = filesByInodeNum.get(inodeNum, null);
+		if (!file)
+		{
+			auto newFile = new T(inodeNum);
+			filesByInodeNum[inodeNum] = newFile;
+			return newFile;
+		}
+		return enforce(cast(T) file,
+			text(inodeNum, " is of type ", typeid(file).name, " but ", typeid(T).name, " was requested"));
+	}
 }
 
 class NamingVisitor : FileVisitor

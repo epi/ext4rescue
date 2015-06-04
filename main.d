@@ -20,33 +20,68 @@
 */
 module main;
 
-import ext4;
-import ddrescue;
-import rescue.scan;
-
-import std.algorithm;
-import std.bitmanip;
-import std.container.rbtree;
-import std.format;
+import std.exception;
 import std.stdio;
+
+import ddrescue;
+import ext4;
+import rescue.cache;
+import rescue.file;
+import rescue.scan;
 
 void main(string[] args)
 {
+	enforce(args.length >= 2, "Missing ext4 file system image name");
+	string imageName = args[1];
+	string ddrescueLogName;
 	Region[] regions;
 	if (args.length > 2)
-		regions = parseLog(File(args[2]).byLine());
+	{
+		ddrescueLogName = args[2];
+		regions = parseLog(File(ddrescueLogName).byLine());
+	}
 	if (regions.length == 0)
-		regions ~= Region(0, getFileSize(args[1]), true);
+		regions ~= Region(0, getFileSize(imageName), true);
 	//regions = regions.addRandomDamage(30, 1024);
 	debug writeln(regions);
-	scope ext4 = new Ext4(args[1], regions);
+
+	scope ext4 = new Ext4(imageName, regions);
 	writefln("Block size:   %12s", ext4.blockSize);
 	writefln("Inode count:  %12s", ext4.inodes.length);
 	ulong validInodeCount;
 	debug ext4.superBlock.dump();
-	auto scanner = new Scanner(ext4);
-	scanner.scan((uint current, uint total) {
-		stdout.writef("Scanning inodes and directories... %3d%%\r", current * 100UL / total);
-		stdout.flush();
-	});
+
+	FileTree fileTree;
+
+	try
+	{
+		fileTree = readCachedFileTree(imageName, ddrescueLogName);
+	}
+	catch (Exception e)
+	{
+		stderr.writeln("Could not read cached file tree: ", e.msg);
+	}
+
+	if (!fileTree)
+	{
+		fileTree = scan(ext4,
+			(uint current, uint total) {
+				stdout.writef("Scanning inodes and directories... %3d%%\r", current * 100UL / total);
+				stdout.flush();
+				return true;
+			});
+		cacheFileTree(imageName, ddrescueLogName, fileTree);
+	}
+
+	auto visitor = new ProblemDescriptionVisitor();
+	auto namer = new NamingVisitor();
+	foreach (k, v; fileTree.filesByInodeNum)
+	{
+		v.accept(visitor);
+		if (visitor.problems.length)
+		{
+			v.accept(namer);
+			writeln(k, " ", namer.names, " ", visitor.problems);
+		}
+	}
 }
