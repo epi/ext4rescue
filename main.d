@@ -21,6 +21,7 @@
 module main;
 
 import std.exception;
+import std.getopt;
 import std.stdio;
 
 import ddrescue;
@@ -31,6 +32,9 @@ import rescue.scan;
 
 void main(string[] args)
 {
+	bool forceScan;
+	getopt(args, "force-scan", &forceScan);
+
 	enforce(args.length >= 2, "Missing ext4 file system image name");
 	string imageName = args[1];
 	string ddrescueLogName;
@@ -53,13 +57,16 @@ void main(string[] args)
 
 	FileTree fileTree;
 
-	try
+	if (!forceScan)
 	{
-		fileTree = readCachedFileTree(imageName, ddrescueLogName);
-	}
-	catch (Exception e)
-	{
-		stderr.writeln("Could not read cached file tree: ", e.msg);
+		try
+		{
+			fileTree = readCachedFileTree(imageName, ddrescueLogName);
+		}
+		catch (Exception e)
+		{
+			stderr.writeln("Could not read cached file tree: ", e.msg);
+		}
 	}
 
 	if (!fileTree)
@@ -70,6 +77,7 @@ void main(string[] args)
 				stdout.flush();
 				return true;
 			});
+		writeln();
 		cacheFileTree(imageName, ddrescueLogName, fileTree);
 	}
 
