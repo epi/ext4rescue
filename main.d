@@ -78,6 +78,11 @@ void main(string[] args)
 				return true;
 			});
 		writeln();
+		if (!fileTree.get!Directory(2).inodeIsOk)
+		{
+			writeln("Root directory inode is damaged. Trying to find root directory data...");
+			findRootDirectoryContents(ext4, fileTree);
+		}
 		cacheFileTree(imageName, ddrescueLogName, fileTree);
 	}
 

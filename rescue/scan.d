@@ -147,3 +147,66 @@ private void checkDataReadability(SomeFile sf, Ext4 ext4)
 		}
 	}
 }
+
+private bool tryBlockAsRootDirData(Ext4 ext4, FileTree fileTree, ulong blockNum)
+{
+	uint offset = 0;
+	while (offset + ext4_dir_entry_2.sizeof < ext4.blockSize)
+	{
+		auto entry = ext4.cache.requestStruct!ext4_dir_entry_2(blockNum, offset);
+		if (!entry.ok)
+			break;
+		debug entry.dump();
+		if (offset + entry.rec_len > ext4.blockSize)
+			return false;
+		if (offset + ext4_dir_entry_2.name_len.offsetof + entry.name_len > ext4.blockSize)
+			return false;
+		auto sf = fileTree.get(entry.inode);
+		if (sf)
+		{
+			if (entry.file_type == ext4_dir_entry_2.Type.dir && cast(Directory) sf)
+			{
+				auto dir = cast(Directory) sf;
+				if (dir.parent && dir.parent.inodeNum != 2)
+					return false;
+				dir.name = entry.name.idup;
+			}
+			else if (entry.file_type == ext4_dir_entry_2.Type.file && cast(RegularFile) sf)
+			{
+				auto file = cast(RegularFile) sf;
+				if (file.links.length >= file.linkCount)
+					return false;
+				file.links ~= RegularFile.Link(fileTree.get!Directory(2), entry.name.idup);
+			}
+		}
+		offset += entry.rec_len;
+	}
+	return true;
+}
+
+/// If the root directory inode is not readable, search for the root directory data
+/// directly in the data blocks in the first group.
+void findRootDirectoryContents(Ext4 ext4, FileTree fileTree)
+{
+	foreach (ulong blockNum; 1 .. 1 + ext4.superBlock.s_blocks_per_group)
+	{
+		auto entry1 = ext4.cache.requestStruct!ext4_dir_entry_2(blockNum, 0);
+		auto entry2 = ext4.cache.requestStruct!ext4_dir_entry_2(blockNum, 12);
+		if (entry1.ok
+		 && entry1.inode == 2
+		 && entry1.rec_len == 12
+		 && entry1.name_len == 1
+		 && entry1.file_type == ext4_dir_entry_2.Type.dir
+		 && entry1.name == "."
+		 && entry2.ok
+		 && entry2.inode == 2
+		 && entry2.rec_len == 12
+		 && entry2.name_len == 2
+		 && entry2.file_type == ext4_dir_entry_2.Type.dir
+		 && entry2.name == "..")
+		{
+			if (tryBlockAsRootDirData(ext4, fileTree, blockNum))
+				return;
+		}
+	}
+}
