@@ -107,9 +107,16 @@ class FileTree
 		SomeFile file = filesByInodeNum.get(inodeNum, null);
 		if (!file)
 		{
-			auto newFile = new T(inodeNum);
-			filesByInodeNum[inodeNum] = newFile;
-			return newFile;
+			static if (is(T == SomeFile))
+			{
+				return null;
+			}
+			else
+			{
+				auto newFile = new T(inodeNum);
+				filesByInodeNum[inodeNum] = newFile;
+				return newFile;
+			}
 		}
 		return enforce(cast(T) file,
 			text(inodeNum, " is of type ", typeid(file).name, " but ", typeid(T).name, " was requested"));
