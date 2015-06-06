@@ -59,13 +59,7 @@ struct ExtentRange
 		auto loc = _ext4.getInodeLocation(inodeNum);
 		ulong blockNum = loc.blockNum;
 		uint offset = loc.offset + cast(uint) (ext4_inode.i_block.offsetof);
-		auto header = _ext4._cache.requestStruct!ext4_extent_header(blockNum, offset);
-		if (!header.ok || header.eh_magic != EXT4_EXT_MAGIC)
-		{
-			_ok = false;
-			return;
-		}
-		_treePath.push(Node(header, blockNum, offset + cast(uint) ext4_extent_header.sizeof, 0));
+		appendNode(blockNum, offset);
 		descendToLeaf();
 	}
 
@@ -83,11 +77,15 @@ struct ExtentRange
 			_ok = false;
 			return;
 		}
+		if (header.eh_entries == 0)
+			return;
 		_treePath.push(Node(header, headerBlockNum, headerOffset + cast(uint) ext4_extent_header.sizeof, 0));
 	}
 
 	private void descendToLeaf()
 	{
+		if (_treePath.empty)
+			return;
 		// read headers up to leaf level
 		for (;;)
 		{
@@ -126,6 +124,11 @@ struct ExtentRange
 	/// ditto
 	@property Extent front() const { return _current; }
 
+	invariant
+	{
+		assert(_treePath.empty || _treePath.top.nodeIndex < _treePath.top.header.eh_entries);
+	}
+
 	/// ditto
 	void popFront()
 	{
@@ -136,8 +139,7 @@ struct ExtentRange
 				break;
 			_treePath.pop();
 		}
-		if (!_treePath.empty)
-			descendToLeaf();
+		descendToLeaf();
 	}
 
 private:
