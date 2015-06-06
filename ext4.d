@@ -327,20 +327,6 @@ class Ext4
 			return ExtentRange(ext4, inodeNum);
 		}
 
-		/// true if entire map can be read
-		bool checkMapValidity()
-		{
-			auto range = extents;
-			if (!range.ok)
-				return false;
-			foreach (extent; range)
-			{
-				if (!extent.ok)
-					return false;
-			}
-			return true;
-		}
-
 		Ext4 ext4;
 		uint inodeNum;
 		CachedStruct!ext3_inode inodeStruct;
