@@ -317,6 +317,12 @@ class Ext4
 			return bitCat(inodeStruct.l_i_blocks_high, inodeStruct.i_blocks_lo) << (1 + ext4._superBlock.s_log_block_size);
 		}
 
+		@property bool isFastSymlink()
+		{
+			uint eaBlockCount = inodeStruct.i_file_acl_lo ? ext4.blockSize >> 9 : 0;
+			return inodeStruct.mode.type == Mode.Type.symlink && this.blockCount - eaBlockCount == 0;
+		}
+
 		DirIterator readAsDir()
 		{
 			return DirIterator(ext4, inodeNum);

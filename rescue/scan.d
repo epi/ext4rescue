@@ -98,24 +98,30 @@ FileTree scan(Ext4 ext4, bool delegate(uint current, uint total) progressDg = nu
 		}
 		if (inode.inodeNum != 2 && inode.inodeNum < 11)
 			continue;
-		if (inode.ok && !inode.i_dtime)
+		if (inode.ok && !inode.i_dtime && inode.mode.type > 0)
 		{
-			SomeFile sf;
 			if (inode.mode.type == Mode.Type.dir)
 			{
 				Directory dir = fileTree.get!Directory(inode.inodeNum);
 				setFileProperties(dir, inode);
 				scanDirectory(ext4, fileTree, dir);
-				sf = dir;
+				checkDataReadability(dir, ext4);
 			}
 			else if (inode.mode.type == Mode.Type.file)
 			{
 				RegularFile reg = fileTree.get!RegularFile(inode.inodeNum);
 				setFileProperties(reg, inode);
-				sf = reg;
+				checkDataReadability(reg, ext4);
 			}
-			if (sf)
-				checkDataReadability(sf, ext4);
+			else if (inode.mode.type == Mode.Type.symlink)
+			{
+				SymbolicLink link = fileTree.get!SymbolicLink(inode.inodeNum);
+				setFileProperties(link, inode);
+				if (!inode.isFastSymlink)
+					checkDataReadability(link, ext4);
+				else
+					link.blockMapIsOk = true; // FIXME: there's no block map for symlink
+			}
 		}
 	}
 	if (progressDg)

@@ -436,6 +436,7 @@ struct ext3_inode
 	union
 	{
 		__le32  i_block[EXT4_N_BLOCKS]; /// Pointers to blocks
+		char    i_data[i_block.sizeof]; /// Inline data
 		struct
 		{
 			ext4_extent_header extent_header;

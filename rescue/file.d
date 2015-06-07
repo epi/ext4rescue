@@ -28,6 +28,12 @@ import std.path;
 /// Root of the hierarchy
 abstract class SomeFile
 {
+	struct Link
+	{
+		Directory parent;
+		string name;
+	}
+
 	uint inodeNum;
 	uint linkCount;
 	ulong byteCount;
@@ -49,6 +55,7 @@ interface FileVisitor
 {
 	void visit(Directory d);
 	void visit(RegularFile f);
+	void visit(SymbolicLink l);
 }
 
 private
@@ -85,11 +92,15 @@ class Directory : SomeFile
 ///
 class RegularFile : SomeFile
 {
-	static struct Link
-	{
-		Directory parent;
-		string name;
-	}
+	Link[] links;
+
+	mixin BasicCtor;
+	mixin AcceptVisitor;
+}
+
+///
+class SymbolicLink : SomeFile
+{
 	Link[] links;
 
 	mixin BasicCtor;
@@ -125,14 +136,14 @@ class FileTree
 
 class NamingVisitor : FileVisitor
 {
-	private string getDirectoryName(Directory dir)
+	private string getDirectoryName(in Directory dir)
 	{
 		if (dir.name)
 			return dir.name;
 		return format("~~DIR@%d", dir.inodeNum);
 	}
 
-	private string prependWithParentPath(Directory parent, string name)
+	private string prependWithParentPath(in Directory parent, string name)
 	{
 		assert(name.length > 0);
 		if (!parent)
@@ -141,6 +152,17 @@ class NamingVisitor : FileVisitor
 			return buildPath("/", name);
 		else
 			return prependWithParentPath(parent.parent, buildPath(getDirectoryName(parent),  name));
+	}
+
+	private bool setFromLinks(in SomeFile.Link[] links)
+	{
+		names.length = 0;
+		if (links.length)
+		{
+			foreach (link; links)
+				names ~= prependWithParentPath(link.parent, link.name);
+		}
+		return links.length > 0;
 	}
 
 	void visit(Directory d)
@@ -153,14 +175,14 @@ class NamingVisitor : FileVisitor
 
 	void visit(RegularFile f)
 	{
-		names.length = 0;
-		if (f.links.length)
-		{
-			foreach (link; f.links)
-				names ~= prependWithParentPath(link.parent, link.name);
-		}
-		else
+		if (!setFromLinks(f.links))
 			names = [ prependWithParentPath(null, format("~~FILE@%d", f.inodeNum)) ];
+	}
+
+	void visit(SymbolicLink l)
+	{
+		if (!setFromLinks(l.links))
+			names = [ prependWithParentPath(null, format("~~SYMLINK@%d", l.inodeNum)) ];
 	}
 
 	string[] names;
@@ -184,6 +206,14 @@ class ProblemDescriptionVisitor : FileVisitor
 		return true;
 	}
 
+	private void checkLinks(in SomeFile.Link[] links, uint linkCount)
+	{
+		if (links.length == 0)
+			problems ~= "No link found";
+		else if (links.length < linkCount)
+			problems ~= format("Only %d of %d links found", links.length, linkCount);
+	}
+
 	void visit(Directory d)
 	{
 		if (!checkCommon(d))
@@ -202,10 +232,14 @@ class ProblemDescriptionVisitor : FileVisitor
 	{
 		if (!checkCommon(f))
 			return;
-		if (f.links.length == 0)
-			problems ~= "No link found";
-		else if (f.links.length < f.linkCount)
-			problems ~= format("Only %d of %d links found", f.links.length, f.linkCount);
+		checkLinks(f.links, f.linkCount);
+	}
+
+	void visit(SymbolicLink l)
+	{
+		if (!checkCommon(l))
+			return;
+		checkLinks(l.links, l.linkCount);
 	}
 
 	string[] problems;

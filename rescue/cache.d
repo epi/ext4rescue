@@ -57,9 +57,9 @@ private string getCacheFileName(string imageName, string ddrescueLogName)
 	return buildPath("~", ".ext4rescue", filename).expandTilde();
 }
 
-private enum cacheVersion = 10001;
-private enum cacheMinimumVersion = 10001;
-private enum cacheMaximumVersion = 10001;
+private enum cacheVersion = 10002;
+private enum cacheMinimumVersion = 10002;
+private enum cacheMaximumVersion = 10002;
 
 private class CacheWriter : FileVisitor
 {
@@ -77,6 +77,15 @@ private class CacheWriter : FileVisitor
 			sf.blockMapIsOk, sf.mappedByteCount, sf.readableByteCount);
 	}
 
+	private void writeLinks(in SomeFile.Link[] links)
+	{
+		foreach (link; links)
+		{
+			outfile.writef("/%d/%s",
+				link.parent is null ? 0 : link.parent.inodeNum, link.name);
+		}
+	}
+
 	void visit(Directory d)
 	{
 		writeCommon(d, 'd');
@@ -87,11 +96,14 @@ private class CacheWriter : FileVisitor
 	void visit(RegularFile r)
 	{
 		writeCommon(r, 'r');
-		foreach (link; r.links)
-		{
-			outfile.writef("/%d/%s",
-				link.parent is null ? 0 : link.parent.inodeNum, link.name);
-		}
+		writeLinks(r.links);
+		outfile.writeln();
+	}
+
+	void visit(SymbolicLink l)
+	{
+		writeCommon(l, 'l');
+		writeLinks(l.links);
 		outfile.writeln();
 	}
 }
@@ -127,18 +139,29 @@ private void readCommon(SomeFile sf, in char[][] fields)
 	sf.readableByteCount = to!ulong(fields[7]);
 }
 
+private void readLinks(FileTree fileTree, ref SomeFile.Link[] links, const(char[])[] fields)
+in
+{
+	assert((fields.length & 1) == 0);
+}
+body
+{
+	while (fields.length)
+	{
+		uint parentInodeNum = to!uint(fields[0]);
+		links ~= RegularFile.Link(
+			parentInodeNum == 0 ? null : fileTree.get!Directory(parentInodeNum),
+			fields[1].idup);
+		fields = fields[2 .. $];
+	}
+}
+
 private void readRegularFile(FileTree fileTree, in char[][] fields)
 {
 	enforce(fields.length >= 8 && !(fields.length & 1), "invalid regular file entry");
 	auto r = fileTree.get!RegularFile(to!uint(fields[0]));
 	readCommon(r, fields);
-	for (size_t i = 8; i < fields.length; i += 2)
-	{
-		uint parentInodeNum = to!uint(fields[i]);
-		r.links ~= RegularFile.Link(
-			parentInodeNum == 0 ? null : fileTree.get!Directory(parentInodeNum),
-			fields[i + 1].idup);
-	}
+	readLinks(fileTree, r.links, fields[8 .. $]);
 }
 
 private void readDirectory(FileTree fileTree, in char[][] fields)
@@ -153,10 +176,19 @@ private void readDirectory(FileTree fileTree, in char[][] fields)
 	d.name = fields[11].idup;
 }
 
+private void readSymbolicLink(FileTree fileTree, in char[][] fields)
+{
+	enforce(fields.length >= 8 && !(fields.length & 1), "invalid symbolic link entry");
+	auto l = fileTree.get!SymbolicLink(to!uint(fields[0]));
+	readCommon(l, fields);
+	readLinks(fileTree, l.links, fields[8 .. $]);
+}
+
 static this()
 {
 	readers["r"] = &readRegularFile;
 	readers["d"] = &readDirectory;
+	readers["l"] = &readSymbolicLink;
 }
 
 ///
@@ -186,7 +218,8 @@ FileTree readCachedFileTree(string imageName, string ddrescueLogName)
 	{
 		auto fields = lines.front.split("/");
 		enforce(fields.length >= 1, "empty cache entry");
-		readers[fields[0]](result, fields[1 .. $]);
+		auto reader = enforce(readers.get(fields[0].assumeUnique(), null), "unknown file type");
+		reader(result, fields[1 .. $]);
 		lines.popFront();
 	}
 	return result;
