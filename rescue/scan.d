@@ -61,6 +61,11 @@ private void scanDirectory(Ext4 ext4, FileTree fileTree, Directory thisDir)
 			RegularFile file = fileTree.get!RegularFile(entry.inode);
 			file.links ~= RegularFile.Link(thisDir, entry.name.idup);
 		}
+		else if (entry.file_type == ext4_dir_entry_2.Type.symlink)
+		{
+			SymbolicLink symlink = fileTree.get!SymbolicLink(entry.inode);
+			symlink.links ~= SymbolicLink.Link(thisDir, entry.name.idup);
+		}
 	}
 }
 
