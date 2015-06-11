@@ -37,8 +37,6 @@ private void scanDirectory(Ext4 ext4, FileTree fileTree, Directory thisDir)
 	{
 		if (!entry.inode)
 			continue;
-		//writef("\x1b[2K%10d %d %s\r", entry.inode, entry.file_type, entry.name);
-		//stdout.flush();
 		if (entry.file_type == ext4_dir_entry_2.Type.dir)
 		{
 			Directory dir = fileTree.get!Directory(entry.inode);
@@ -47,7 +45,8 @@ private void scanDirectory(Ext4 ext4, FileTree fileTree, Directory thisDir)
 			else if (entry.name == "..")
 			{
 				// entry points to the parent of thisDir
-				associateParentWithDir(dir, thisDir);
+				if (dir !is thisDir)
+					associateParentWithDir(dir, thisDir);
 			}
 			else
 			{
@@ -101,7 +100,7 @@ FileTree scan(Ext4 ext4, bool delegate(uint current, uint total) progressDg = nu
 			if (!progressDg(inode.inodeNum - 1, total))
 				return fileTree;
 		}
-		if (inode.inodeNum != 2 && inode.inodeNum < 11)
+		if (inode.inodeNum < 11 && inode.inodeNum != 2)
 			continue;
 		if (inode.ok && !inode.i_dtime && inode.mode.type > 0)
 		{

@@ -218,14 +218,16 @@ class ProblemDescriptionVisitor : FileVisitor
 	{
 		if (!checkCommon(d))
 			return;
+		if (d.subdirectoryCount != d.linkCount - 2)
+			problems ~= format("Only %d of %d subdirectories found", d.subdirectoryCount, d.linkCount - 2);
+		if (d.inodeNum == 2)
+			return;
 		if (d.parent is null)
 			problems ~= "Parent not known";
 		if (d.parentMismatch)
 			problems ~= "Parent link mismatch";
 		if (d.name is null)
 			problems ~= "Name not known";
-		if (d.subdirectoryCount != d.linkCount - 2)
-			problems ~= format("Only %d of %d subdirectories found", d.subdirectoryCount, d.linkCount - 2);
 	}
 
 	void visit(RegularFile f)
