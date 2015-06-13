@@ -18,7 +18,7 @@
 	You should have received a copy of the GNU General Public License
 	along with ext4rescue.  If not, see $(LINK http://www.gnu.org/licenses/).
 */
-module rescue.file;
+module filetree;
 
 import std.conv;
 import std.exception;
@@ -183,6 +183,12 @@ class NamingVisitor : FileVisitor
 	{
 		if (!setFromLinks(l.links))
 			names = [ prependWithParentPath(null, format("~~SYMLINK@%d", l.inodeNum)) ];
+	}
+
+	string[] nameFile(SomeFile f)
+	{
+		f.accept(this);
+		return names;
 	}
 
 	string[] names;

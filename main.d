@@ -26,9 +26,9 @@ import std.stdio;
 
 import ddrescue;
 import ext4;
-import rescue.cache;
-import rescue.file;
-import rescue.scan;
+import filecache;
+import filetree;
+import scan;
 
 void main(string[] args)
 {
@@ -71,7 +71,7 @@ void main(string[] args)
 
 	if (!fileTree)
 	{
-		fileTree = scan(ext4,
+		fileTree = scanInodesAndDirectories(ext4,
 			(uint current, uint total) {
 				stdout.writef("Scanning inodes and directories... %3d%%\r", current * 100UL / total);
 				stdout.flush();

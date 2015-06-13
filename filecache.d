@@ -18,7 +18,7 @@
 	You should have received a copy of the GNU General Public License
 	along with ext4rescue.  If not, see $(LINK http://www.gnu.org/licenses/).
 */
-module rescue.cache;
+module filecache;
 
 import std.array;
 import std.conv;
@@ -29,7 +29,7 @@ import std.file;
 import std.path;
 import std.stdio;
 
-import rescue.file;
+import filetree;
 
 private string getModificationTimeAsString(string filename)
 {

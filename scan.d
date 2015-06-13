@@ -18,7 +18,7 @@
 	You should have received a copy of the GNU General Public License
 	along with ext4rescue.  If not, see $(LINK http://www.gnu.org/licenses/).
 */
-module rescue.scan;
+module scan;
 
 import std.conv;
 import std.exception;
@@ -28,7 +28,7 @@ import blockcache;
 import ddrescue;
 import defs;
 import ext4;
-import rescue.file;
+import filetree;
 
 /// Scan directory entries and associate inodes with names.
 private void scanDirectory(Ext4 ext4, FileTree fileTree, Directory thisDir)
@@ -88,7 +88,7 @@ private void setFileProperties(SomeFile file, Ext4.Inode inode)
 }
 
 /// Scan inodes and directories in file system ext4
-FileTree scan(Ext4 ext4, bool delegate(uint current, uint total) progressDg = null, uint progressStep = 1024)
+FileTree scanInodesAndDirectories(Ext4 ext4, bool delegate(uint current, uint total) progressDg = null, uint progressStep = 1024)
 {
 	auto fileTree = new FileTree;
 	uint total = ext4.inodes.length;
