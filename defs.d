@@ -353,40 +353,54 @@ struct Mode
 		__u16 mode;
 	}
 
+	this(Type type, uint perm, bool sticky = false, bool setguid = false, bool setuid = false)
+	{
+		this.type = type;
+		this.perm = perm;
+		this.sticky = sticky;
+		this.setguid = setguid;
+		this.setuid = setuid;
+	}
+
 	void toString(scope void delegate(const(char)[]) sink) const
 	{
 		switch (type)
 		{
-		case Mode.Type.fifo:
-			sink("FIFO"); break;
-		case Mode.Type.chrdev:
-			sink("CDEV"); break;
-		case Mode.Type.blkdev:
-			sink("BDEV"); break;
 		case Mode.Type.file:
-			sink("FILE"); break;
-		case Mode.Type.symlink:
-			sink("LINK"); break;
+			sink("-"); break;
 		case Mode.Type.dir:
-			sink("DIR "); break;
+			sink("d"); break;
+		case Mode.Type.symlink:
+			sink("l"); break;
+		case Mode.Type.fifo:
+			sink("p"); break;
+		case Mode.Type.chrdev:
+			sink("c"); break;
+		case Mode.Type.blkdev:
+			sink("b"); break;
 		case Mode.Type.socket:
-			sink("SOCK"); break;
+			sink("s"); break;
 		default:
-			sink("????"); break;
+			sink("?"); break;
 		}
-		sink(" | ");
-		char[3] pp;
-		pp[0] = ((perm >> 6) & 7) + '0';
-		pp[1] = ((perm >> 3) & 7) + '0';
-		pp[2] = ((perm >> 0) & 7) + '0';
-		sink(pp[]);
-		if (sticky)
-			sink(" | sticky");
-		if (setguid)
-			sink(" | setguid");
-		if (setuid)
-			sink(" | setuid");
+		foreach (i; 0 .. 9)
+			sink((perm & (256 >> i)) ? "rwxrwxrwx"[i .. i + 1] : "-");
 	}
+}
+
+unittest
+{
+	import std.conv: octal, to;
+	import std.stdio: writeln;
+	auto mode = Mode(Mode.Type.file, octal!"644");
+	assert(mode.type == Mode.Type.file);
+	assert(mode.perm == 0b110_100_100);
+	//writeln("{", to!string(mode), "}");
+	assert(to!string(mode) == "-rw-r--r--");
+	mode = Mode(Mode.Type.dir, octal!"755");
+	assert(to!string(mode) == "drwxr-xr-x");
+	mode = Mode(Mode.Type.symlink, 0);
+	assert(to!string(mode) == "l---------");
 }
 
 ///

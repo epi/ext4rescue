@@ -1,5 +1,5 @@
-all_modules  := bits blockcache ddrescue defs ext4 rescue/file rescue/scan rescue/cache
-test_modules := bits blockcache ddrescue ext4 rescue/file
+all_modules  := bits blockcache ddrescue defs ext4 rescue/file rescue/scan rescue/cache rescue/extract
+test_modules := bits blockcache ddrescue defs ext4 rescue/file
 docdir       := doc
 
 all_sources  := $(foreach m,$(all_modules),$(m).d)
@@ -24,7 +24,7 @@ unittest: $(test_targets)
 .INTERMEDIATE: $(test_progs)
 
 %.lst: test-%
-	./$< && grep covered $@
+	./$< && grep "% covered" $@
 
 test.a: $(all_sources)
 	dmd -g -debug -lib $^ -of$@
