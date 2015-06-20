@@ -20,6 +20,7 @@
 */
 module filetree;
 
+import std.bitmanip;
 import std.conv;
 import std.exception;
 import std.format;
@@ -43,11 +44,40 @@ abstract class SomeFile
 	bool inodeIsOk;
 	bool blockMapIsOk;
 
+	///
+	final @property bool ok() const pure nothrow
+	{
+		return status.ok;
+	}
+
+	///
+	@property FileStatus status() const pure nothrow
+	{
+		FileStatus result;
+		if (!inodeIsOk)
+		{
+			result.badInode = true;
+			assert(!result.missingLinks);
+			return result;
+		}
+		if (!blockMapIsOk)
+			result.badMap = true;
+		if (readableByteCount < mappedByteCount)
+			result.badData = true;
+		assert(!result.missingLinks);
+		return result;
+	}
+
+	///
+	abstract @property uint foundLinkCount() const pure nothrow;
+
+	///
 	this(uint inodeNum)
 	{
 		this.inodeNum = inodeNum;
 	}
 
+	///
 	abstract void accept(FileVisitor v);
 }
 
@@ -60,7 +90,7 @@ interface FileVisitor
 
 private
 {
-	mixin template BasicCtor()
+	mixin template CtorInodeNum()
 	{
 		this(uint inodeNum)
 		{
@@ -85,25 +115,74 @@ class Directory : SomeFile
 	bool parentMismatch;
 	string name;
 
-	mixin BasicCtor;
+	mixin CtorInodeNum;
+	mixin AcceptVisitor;
+
+	override @property FileStatus status() const pure nothrow
+	{
+		auto result = super.status;
+		if (inodeIsOk && subdirectoryCount != linkCount - 2)
+			result.missingLinks = true;
+		if (inodeNum == 2)
+			return result;
+		if (parent is null || parentMismatch)
+			result.parentUnknown = true;
+		if (name is null)
+		{
+			result.nameUnknown = true;
+			result.missingLinks = true;
+		}
+		return result;
+	}
+
+	///
+	override @property uint foundLinkCount() const pure nothrow
+	{
+		return subdirectoryCount + 1 + !!name;
+	}
+}
+
+///
+private abstract class MultiplyLinkedFile : SomeFile
+{
+	Link[] links;
+
+	mixin CtorInodeNum;
+
+	override @property FileStatus status() const pure nothrow
+	{
+		FileStatus result = super.status;
+		if (!inodeIsOk)
+			return result;
+		if (links.length != linkCount)
+		{
+			result.missingLinks = true;
+			if (links.length == 0)
+			{
+				result.nameUnknown = true;
+				result.parentUnknown = true;
+			}
+		}
+		return result;
+	}
+
+	override @property uint foundLinkCount() const pure nothrow
+	{
+		return cast(uint) links.length;
+	}
+}
+
+///
+class RegularFile : MultiplyLinkedFile
+{
+	mixin CtorInodeNum;
 	mixin AcceptVisitor;
 }
 
 ///
-class RegularFile : SomeFile
+class SymbolicLink : MultiplyLinkedFile
 {
-	Link[] links;
-
-	mixin BasicCtor;
-	mixin AcceptVisitor;
-}
-
-///
-class SymbolicLink : SomeFile
-{
-	Link[] links;
-
-	mixin BasicCtor;
+	mixin CtorInodeNum;
 	mixin AcceptVisitor;
 }
 
@@ -194,6 +273,43 @@ class NamingVisitor : FileVisitor
 	string[] names;
 }
 
+struct FileStatus
+{
+	union
+	{
+		mixin(bitfields!(
+			bool, "badInode", 1,
+			bool, "parentUnknown", 1,
+			bool, "nameUnknown", 1,
+			bool, "missingLinks", 1,
+			bool, "badMap", 1,
+			bool, "badData", 1,
+			uint, "__reserved", 26));
+		uint status;
+	}
+
+	@property void toString(scope void delegate(const(char)[]) sink)
+	{
+		foreach (i; 0 .. 6)
+			sink((status & (1 << i)) ? "ipnlmd"[i .. i + 1] : "-");
+	}
+
+	@property bool ok() const pure nothrow { return status == 0; }
+}
+
+unittest
+{
+	import std.stdio;
+	SomeFile f = new RegularFile(10);
+	f.inodeIsOk = true;
+	f.linkCount = 1;
+	f.blockMapIsOk = true;
+	assert(to!string(f.status) == "-pnl--");
+	f.inodeIsOk = false;
+	assert(to!string(f.status) == "i-----");
+}
+
+deprecated
 class ProblemDescriptionVisitor : FileVisitor
 {
 	private bool checkCommon(SomeFile sf)

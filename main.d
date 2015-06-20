@@ -20,9 +20,11 @@
 */
 module main;
 
+import std.bitmanip;
 import std.exception;
 import std.getopt;
 import std.stdio;
+import std.typecons : scoped;
 
 import ddrescue;
 import ext4;
@@ -30,10 +32,50 @@ import filecache;
 import filetree;
 import scan;
 
+enum ListMode { none, all, bad }
+
+void listFiles(FileTree fileTree, Ext4 ext4, ListMode listMode)
+{
+	if (listMode == ListMode.none)
+		return;
+
+	auto namer = scoped!NamingVisitor();
+	foreach (inodeNum; 2 .. ext4.inodes.length + 1)
+	{
+		SomeFile sf = fileTree.filesByInodeNum.get(inodeNum, null);
+		if (sf)
+		{
+			if (listMode == ListMode.bad && sf.ok)
+				continue;
+			writef("%10d %s ", inodeNum, sf.status);
+			if (sf.inodeIsOk)
+			{
+				auto inode = ext4.inodes[sf.inodeNum];
+				writef("%s %3d/%3d %5d %5d %10d ", inode.mode, sf.foundLinkCount, sf.linkCount, inode.i_uid, inode.i_gid, inode.size);
+			}
+			else
+			{
+				static class ModeVisitor : FileVisitor {
+					char mode;
+					void visit(RegularFile rf) { mode = '-'; }
+					void visit(Directory d) { mode = 'd'; }
+					void visit(SymbolicLink sl) { mode = 'l'; }
+				}
+				auto modeVisitor = scoped!ModeVisitor();
+				sf.accept(modeVisitor);
+				writef("%c          %3d                            ", modeVisitor.mode, sf.foundLinkCount);
+			}
+			sf.accept(namer);
+			writefln("%-(%s%|\n                                                            %)", namer.names);
+		}
+	}
+}
+
 void main(string[] args)
 {
 	bool forceScan;
-	getopt(args, "force-scan", &forceScan);
+	ListMode listMode;
+	getopt(args, "force-scan", &forceScan, "list", &listMode);
 
 	enforce(args.length >= 2, "Missing ext4 file system image name");
 	string imageName = args[1];
@@ -86,15 +128,5 @@ void main(string[] args)
 		cacheFileTree(imageName, ddrescueLogName, fileTree);
 	}
 
-	auto visitor = new ProblemDescriptionVisitor();
-	auto namer = new NamingVisitor();
-	foreach (k, v; fileTree.filesByInodeNum)
-	{
-		v.accept(visitor);
-		if (visitor.problems.length)
-		{
-			v.accept(namer);
-			writeln(k, " ", namer.names, " ", visitor.problems);
-		}
-	}
+	listFiles(fileTree, ext4, listMode);
 }
