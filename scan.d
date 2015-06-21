@@ -35,7 +35,7 @@ private void scanDirectory(Ext4 ext4, FileTree fileTree, Directory thisDir)
 {
 	foreach (entry; ext4.inodes[thisDir.inodeNum].readAsDir())
 	{
-		if (!entry.inode)
+		if (!entry.ok || !entry.inode)
 			continue;
 		if (entry.file_type == ext4_dir_entry_2.Type.dir)
 		{
