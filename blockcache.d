@@ -277,10 +277,11 @@ struct CachedStruct(S)
 	 */
 	@property bool ok() const pure nothrow { return _ok; }
 
-	@property immutable(S*) _s() const
+	@property const(S*) _s() const
 	{
+		assert(_ok, text("Trying to read unreadable struct ", S.stringof, " @", _cachedBlock._impl.pageNum * PAGE_SIZE + _cachedBlock._offset));
 		assert(_cachedBlock._impl.data !is null);
-		return cast(immutable(S*)) (_cachedBlock._impl.data + _cachedBlock._offset);
+		return cast(const(S*)) (_cachedBlock._impl.data + _cachedBlock._offset);
 	}
 
 	debug
