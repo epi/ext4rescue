@@ -138,11 +138,6 @@ private void checkDataReadability(SomeFile sf, Ext4 ext4)
 	sf.mappedByteCount = 0;
 	sf.readableByteCount = 0;
 	auto range = ext4.inodes[sf.inodeNum].extents;
-	if (!range.ok)
-	{
-		sf.blockMapIsOk = false;
-		return;
-	}
 	sf.blockMapIsOk = true;
 	foreach (Extent extent; range)
 	{
@@ -150,10 +145,10 @@ private void checkDataReadability(SomeFile sf, Ext4 ext4)
 			sf.blockMapIsOk = false;
 		else
 		{
-			sf.mappedByteCount += ext4.blockSize * extent.length;
+			sf.mappedByteCount += ext4.blockSize * extent.blockCount;
 			sf.readableByteCount += ext4.cache.ddrescueLog.countReadableBytes(
-				extent.start * ext4.blockSize,
-				(extent.start + extent.length) * ext4.blockSize);
+				extent.physicalBlockNum * ext4.blockSize,
+				(extent.physicalBlockNum + extent.blockCount) * ext4.blockSize);
 		}
 	}
 }

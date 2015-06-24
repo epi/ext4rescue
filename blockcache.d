@@ -324,6 +324,10 @@ private:
  */
 class BlockCache
 {
+	alias Page = CachedPage;
+	alias Block = CachedBlock;
+	alias Struct = CachedStruct;
+
 	/** Open the specified image file.
 	 *  Params:
 	 *   filename    = name of the image file.
@@ -650,7 +654,7 @@ unittest
 	assert(std.file.readText("/proc/self/maps").find(img.name).empty);
 }
 
-unittest
+version(none) unittest
 {
 	struct Foo
 	{

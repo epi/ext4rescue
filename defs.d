@@ -522,11 +522,11 @@ struct ext4_extent
 		return bitCat(ee_start_hi, ee_start_lo);
 	}
 
-	@property uint len() const pure nothrow
+	@property ushort len() const pure nothrow
 	{
 		if (initialized)
 			return ee_len;
-		return ee_len - 0x8000;
+		return cast(ushort) (ee_len - 0x8000);
 	}
 
 	@property bool initialized() const pure nothrow
