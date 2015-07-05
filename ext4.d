@@ -20,6 +20,7 @@
 */
 module ext4;
 
+import std.array: Appender, appender;
 import std.conv;
 import std.exception;
 import std.format;
@@ -40,7 +41,6 @@ ulong getFileSize(const(char)[] name)
 
 private struct Stack(T)
 {
-	import std.array: Appender, appender;
 	Appender!(T[]) _app;
 	@property ref inout(T) top() inout { return _app.data[$ - 1]; };
 	@property bool empty() const { return _app.data.length == 0; }
@@ -144,6 +144,12 @@ struct GenericExtentRange(Cache)
 		descendToLeaf();
 	}
 
+	/// Returns: a list of blocks occupied by the extent tree itself
+	@property const(ulong[]) treeBlockNums() pure nothrow const
+	{
+		return _treeBlockNums.data;
+	}
+
 	invariant
 	{
 		assert(_treePath.empty || !headerIsOk || _treePath.top.nodeIndex < _treePath.top.header.eh_entries);
@@ -162,6 +168,7 @@ private:
 	{
 		auto header = _cache.requestStruct!ext4_extent_header(headerBlockNum, headerOffset);
 		_treePath.push(Node(header, headerBlockNum, headerOffset + cast(uint) ext4_extent_header.sizeof, 0));
+		_treeBlockNums.put(headerBlockNum);
 	}
 
 	// Set _current to the first extent of the leaf node.
@@ -205,6 +212,7 @@ private:
 	Extent _current = Extent(0, 0, 0, false);
 	Cache _cache;
 	Stack!Node _treePath;
+	Appender!(ulong[]) _treeBlockNums;
 }
 
 ///
@@ -282,6 +290,7 @@ unittest
 	assert(range.front.physicalBlockNum == 0x1337cafebabe);
 	range.popFront();
 	assert(range.empty);
+	assert(range.treeBlockNums == [ 13 ]);
 }
 
 unittest
@@ -337,7 +346,6 @@ unittest
 	cache.put(ext4_extent.init, false);
 	cache.put(ext4_extent.init, false);
 
-
 	auto range = GenericExtentRange!TestCache(cache, 13, 60); //, 11 * ext4_extent.sizeof);
 	assert(!range.empty);
 	assert(!range.front.ok); // bad header @14
@@ -392,6 +400,7 @@ unittest
 	assert(range.front.logicalBlockNum == 200);
 	range.popFront();
 	assert(range.empty);
+	assert(range.treeBlockNums == [ 13, 14, 15, 17, 18, 16 ]);
 }
 
 struct DirIterator
