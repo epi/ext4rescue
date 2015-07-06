@@ -74,16 +74,20 @@ void listFiles(FileTree fileTree, Ext4 ext4, ListMode listMode)
 
 void showSummary(FileTree fileTree, Ext4 ext4)
 {
+	// All byte counts fit in ulong, as maximum file system size is 1 EiB (i.e. 2^^60).
+	// All file counts fit in uint, as maximum number of files in a file system is 2^^32 minus a few.
 	static struct Summary
 	{
 		uint fileCount;            /// number of files of specific type
 		uint goodInodeCount;       /// number of good inodes
 		uint badInodeCount;        /// number of bad inodes
-		ulong declaredBlockCount;  /// sum of block counts declared in inodes (in 512K blocks)
-		ulong reachableBlockCount; /// sum of block counts reachable via block maps / extent trees
-		ulong readableBlockCount;  /// reachableBlockCount - number of bad blocks reachable via block maps / extent trees
-		ulong badBlockCount;       /// number of blocks that are unreachable or unreadable
+		uint badMapCount;          /// number of files with bad block map/extent tree
 		uint unnamedFileCount;     /// number of files for which names were not found
+		ulong declaredByteCount;   /// number of bytes in blocks declared in inodes as i_blocks_high/_lo
+		ulong mapByteCount;        /// number of bytes in readable block map/extent tree blocks
+		ulong reachableByteCount;  /// number of bytes in blocks reachable via block maps/extent trees
+		ulong readableByteCount;   /// number of readable bytes in data blocks
+		ulong badByteCount;        /// number of unreadable bytes in data blocks
 	}
 
 	class SummaryVisitor : FileVisitor
@@ -96,12 +100,13 @@ void showSummary(FileTree fileTree, Ext4 ext4)
 		{
 			if (f.inodeIsOk)
 			{
-				auto inodeStruct = ext4.inodes[f.inodeNum];
-				assert(inodeStruct.ok);
 				++s.goodInodeCount;
-				s.declaredBlockCount += inodeStruct.blockCount >> 1;
-				s.reachableBlockCount += f.mappedByteCount >> 10;
-				s.readableBlockCount += f.readableByteCount >> 10;
+				s.declaredByteCount += f.byteCount;
+				s.mapByteCount += f.mapByteCount;
+				s.reachableByteCount += f.reachableByteCount;
+				s.readableByteCount += f.readableByteCount;
+				if (!f.blockMapIsOk)
+					++s.badMapCount;
 			}
 			else
 			{
@@ -118,7 +123,7 @@ void showSummary(FileTree fileTree, Ext4 ext4)
 		void postprocess(ref Summary s)
 		{
 			s.fileCount = s.badInodeCount + s.goodInodeCount;
-			s.badBlockCount = s.declaredBlockCount - s.readableBlockCount;
+			s.badByteCount = s.reachableByteCount - s.readableByteCount;
 		}
 
 		void postprocess()
@@ -149,11 +154,13 @@ void showSummary(FileTree fileTree, Ext4 ext4)
 	writefln("%-30s%-(%20s%)", "number of files", visitor.getFieldForAllTypes!"fileCount"());
 	writefln("%-30s%-(%20s%)", "good inodes", visitor.getFieldForAllTypes!"goodInodeCount"());
 	writefln("%-30s%-(%20s%)", "bad inodes", visitor.getFieldForAllTypes!"badInodeCount"());
+	writefln("%-30s%-(%20s%)", "files with bad map/tree", visitor.getFieldForAllTypes!"badMapCount"());
 	writefln("%-30s%-(%20s%)", "files with no name", visitor.getFieldForAllTypes!"unnamedFileCount"());
-	writefln("%-30s%-(%20s%)", "declared 1K-blocks", visitor.getFieldForAllTypes!"declaredBlockCount"());
-	writefln("%-30s%-(%20s%)", "reachable 1K-blocks", visitor.getFieldForAllTypes!"reachableBlockCount"());
-	writefln("%-30s%-(%20s%)", "readable 1K-blocks", visitor.getFieldForAllTypes!"readableBlockCount"());
-	writefln("%-30s%-(%20s%)", "bad or unreachable 1K-blocks", visitor.getFieldForAllTypes!"badBlockCount"());
+	writefln("%-30s%-(%20s%)", "declared bytes", visitor.getFieldForAllTypes!"declaredByteCount"());
+	writefln("%-30s%-(%20s%)", "bytes in map/tree blocks", visitor.getFieldForAllTypes!"mapByteCount"());
+	writefln("%-30s%-(%20s%)", "reachable data bytes", visitor.getFieldForAllTypes!"reachableByteCount"());
+	writefln("%-30s%-(%20s%)", "readable data bytes", visitor.getFieldForAllTypes!"readableByteCount"());
+	writefln("%-30s%-(%20s%)", "unreadable data bytes", visitor.getFieldForAllTypes!"badByteCount"());
 }
 
 void main(string[] args)

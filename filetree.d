@@ -39,7 +39,8 @@ abstract class SomeFile
 	uint linkCount;
 	ulong byteCount;
 	ulong size;
-	ulong mappedByteCount;
+	ulong mapByteCount;
+	ulong reachableByteCount;
 	ulong readableByteCount;
 	bool inodeIsOk;
 	bool blockMapIsOk;
@@ -62,7 +63,7 @@ abstract class SomeFile
 		}
 		if (!blockMapIsOk)
 			result.badMap = true;
-		if (readableByteCount < mappedByteCount)
+		if (readableByteCount < reachableByteCount)
 			result.badData = true;
 		assert(!result.missingLinks);
 		return result;
@@ -322,9 +323,9 @@ class ProblemDescriptionVisitor : FileVisitor
 		}
 		if (!sf.blockMapIsOk)
 			problems ~= "Block map or extent tree is damaged";
-		if (sf.mappedByteCount != sf.readableByteCount)
+		if (sf.reachableByteCount != sf.readableByteCount)
 			problems ~= format("Only %d of %d (%g%%) reachable data bytes are readable",
-				sf.readableByteCount, sf.mappedByteCount, sf.readableByteCount * 100.0 / sf.mappedByteCount);
+				sf.readableByteCount, sf.reachableByteCount, sf.readableByteCount * 100.0 / sf.reachableByteCount);
 		return true;
 	}
 

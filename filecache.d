@@ -57,9 +57,9 @@ private string getCacheFileName(string imageName, string ddrescueLogName)
 	return buildPath("~", ".ext4rescue", filename).expandTilde();
 }
 
-private enum cacheVersion = 10002;
-private enum cacheMinimumVersion = 10002;
-private enum cacheMaximumVersion = 10002;
+private enum cacheVersion = 10003;
+private enum cacheMinimumVersion = 10003;
+private enum cacheMaximumVersion = 10003;
 
 private class CacheWriter : FileVisitor
 {
@@ -72,9 +72,9 @@ private class CacheWriter : FileVisitor
 
 	private void writeCommon(SomeFile sf, char type)
 	{
-		outfile.writef("%s/%d/%d/%d/%d/%d/%d/%d/%d",
+		outfile.writef("%s/%d/%d/%d/%d/%d/%d/%d/%d/%d",
 			type, sf.inodeNum, sf.linkCount, sf.byteCount, sf.size, sf.inodeIsOk,
-			sf.blockMapIsOk, sf.mappedByteCount, sf.readableByteCount);
+			sf.blockMapIsOk, sf.mapByteCount, sf.reachableByteCount, sf.readableByteCount);
 	}
 
 	private void writeLinks(in SomeFile.Link[] links)
@@ -135,8 +135,9 @@ private void readCommon(SomeFile sf, in char[][] fields)
 	sf.size = to!ulong(fields[3]);
 	sf.inodeIsOk = !!to!uint(fields[4]);
 	sf.blockMapIsOk = !!to!uint(fields[5]);
-	sf.mappedByteCount = to!ulong(fields[6]);
-	sf.readableByteCount = to!ulong(fields[7]);
+	sf.mapByteCount = to!ulong(fields[6]);
+	sf.reachableByteCount = to!ulong(fields[7]);
+	sf.readableByteCount = to!ulong(fields[8]);
 }
 
 private void readLinks(FileTree fileTree, ref SomeFile.Link[] links, const(char[])[] fields)
@@ -158,30 +159,30 @@ body
 
 private void readRegularFile(FileTree fileTree, in char[][] fields)
 {
-	enforce(fields.length >= 8 && !(fields.length & 1), "invalid regular file entry");
+	enforce(fields.length >= 9 && (fields.length & 1), text("invalid regular file entry", fields));
 	auto r = fileTree.get!RegularFile(to!uint(fields[0]));
 	readCommon(r, fields);
-	readLinks(fileTree, r.links, fields[8 .. $]);
+	readLinks(fileTree, r.links, fields[9 .. $]);
 }
 
 private void readDirectory(FileTree fileTree, in char[][] fields)
 {
-	enforce(fields.length == 12, "invalid directory entry");
+	enforce(fields.length == 13, "invalid directory entry");
 	auto d = fileTree.get!Directory(to!uint(fields[0]));
 	readCommon(d, fields);
-	uint parentInodeNum = to!uint(fields[8]);
+	uint parentInodeNum = to!uint(fields[9]);
 	d.parent = parentInodeNum == 0 ? null : fileTree.get!Directory(parentInodeNum);
-	d.subdirectoryCount = to!uint(fields[9]);
-	d.parentMismatch = !!to!uint(fields[10]);
-	d.name = fields[11].idup;
+	d.subdirectoryCount = to!uint(fields[10]);
+	d.parentMismatch = !!to!uint(fields[11]);
+	d.name = fields[12].idup;
 }
 
 private void readSymbolicLink(FileTree fileTree, in char[][] fields)
 {
-	enforce(fields.length >= 8 && !(fields.length & 1), "invalid symbolic link entry");
+	enforce(fields.length >= 9 && (fields.length & 1), "invalid symbolic link entry");
 	auto l = fileTree.get!SymbolicLink(to!uint(fields[0]));
 	readCommon(l, fields);
-	readLinks(fileTree, l.links, fields[8 .. $]);
+	readLinks(fileTree, l.links, fields[9 .. $]);
 }
 
 static this()

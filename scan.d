@@ -135,7 +135,7 @@ FileTree scanInodesAndDirectories(Ext4 ext4, bool delegate(uint current, uint to
 
 private void checkDataReadability(SomeFile sf, Ext4 ext4)
 {
-	sf.mappedByteCount = 0;
+	sf.reachableByteCount = 0;
 	sf.readableByteCount = 0;
 	auto range = ext4.inodes[sf.inodeNum].extents;
 	sf.blockMapIsOk = true;
@@ -145,12 +145,13 @@ private void checkDataReadability(SomeFile sf, Ext4 ext4)
 			sf.blockMapIsOk = false;
 		else
 		{
-			sf.mappedByteCount += ext4.blockSize * extent.blockCount;
+			sf.reachableByteCount += ext4.blockSize * extent.blockCount;
 			sf.readableByteCount += ext4.cache.ddrescueLog.countReadableBytes(
 				extent.physicalBlockNum * ext4.blockSize,
 				(extent.physicalBlockNum + extent.blockCount) * ext4.blockSize);
 		}
 	}
+	sf.mapByteCount = (range.treeBlockNums.length - 1) * ext4.blockSize;
 }
 
 private bool tryBlockAsRootDirData(Ext4 ext4, FileTree fileTree, ulong blockNum)
