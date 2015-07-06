@@ -57,9 +57,9 @@ private string getCacheFileName(string imageName, string ddrescueLogName)
 	return buildPath("~", ".ext4rescue", filename).expandTilde();
 }
 
-private enum cacheVersion = 10003;
-private enum cacheMinimumVersion = 10003;
-private enum cacheMaximumVersion = 10003;
+private enum cacheVersion = 10004;
+private enum cacheMinimumVersion = 10004;
+private enum cacheMaximumVersion = 10004;
 
 private class CacheWriter : FileVisitor
 {
@@ -89,8 +89,8 @@ private class CacheWriter : FileVisitor
 	void visit(Directory d)
 	{
 		writeCommon(d, 'd');
-		outfile.writefln("/%d/%d/%d/%s",
-			d.parent is null ? 0 : d.parent.inodeNum, d.subdirectoryCount, d.parentMismatch, d.name);
+		outfile.writefln("/%d/%d/%s",
+			d.parent is null ? 0 : d.parent.inodeNum, d.parentMismatch, d.name);
 	}
 
 	void visit(RegularFile r)
@@ -167,14 +167,19 @@ private void readRegularFile(FileTree fileTree, in char[][] fields)
 
 private void readDirectory(FileTree fileTree, in char[][] fields)
 {
-	enforce(fields.length == 13, "invalid directory entry");
+	enforce(fields.length == 12, "invalid directory entry");
 	auto d = fileTree.get!Directory(to!uint(fields[0]));
 	readCommon(d, fields);
 	uint parentInodeNum = to!uint(fields[9]);
-	d.parent = parentInodeNum == 0 ? null : fileTree.get!Directory(parentInodeNum);
-	d.subdirectoryCount = to!uint(fields[10]);
-	d.parentMismatch = !!to!uint(fields[11]);
-	d.name = fields[12].idup;
+	if (parentInodeNum)
+	{
+		d.parent = fileTree.get!Directory(parentInodeNum);
+		d.parent.children ~= d;
+	}
+	else
+		d.parent = null;
+	d.parentMismatch = !!to!uint(fields[10]);
+	d.name = fields[11].idup;
 }
 
 private void readSymbolicLink(FileTree fileTree, in char[][] fields)
@@ -223,5 +228,6 @@ FileTree readCachedFileTree(string imageName, string ddrescueLogName)
 		reader(result, fields[1 .. $]);
 		lines.popFront();
 	}
+	result.updateRoots();
 	return result;
 }

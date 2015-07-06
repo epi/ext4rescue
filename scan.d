@@ -59,11 +59,13 @@ private void scanDirectory(Ext4 ext4, FileTree fileTree, Directory thisDir)
 		{
 			RegularFile file = fileTree.get!RegularFile(entry.inode);
 			file.links ~= RegularFile.Link(thisDir, entry.name.idup);
+			thisDir.children ~= file;
 		}
 		else if (entry.file_type == ext4_dir_entry_2.Type.symlink)
 		{
 			SymbolicLink symlink = fileTree.get!SymbolicLink(entry.inode);
 			symlink.links ~= SymbolicLink.Link(thisDir, entry.name.idup);
+			thisDir.children ~= symlink;
 		}
 	}
 }
@@ -73,7 +75,7 @@ private void associateParentWithDir(Directory parent, Directory dir)
 	if (!dir.parent)
 	{
 		dir.parent = parent;
-		++parent.subdirectoryCount;
+		parent.children ~= dir;
 	}
 	else if (dir.parent !is parent)
 		dir.parentMismatch = true;
@@ -130,6 +132,7 @@ FileTree scanInodesAndDirectories(Ext4 ext4, bool delegate(uint current, uint to
 	}
 	if (progressDg)
 		progressDg(total, total);
+	fileTree.updateRoots();
 	return fileTree;
 }
 
@@ -175,7 +178,8 @@ private bool tryBlockAsRootDirData(Ext4 ext4, FileTree fileTree, ulong blockNum)
 				auto dir = cast(Directory) sf;
 				if (dir.parent && dir.parent.inodeNum != 2)
 					return false;
-				dir.name = entry.name.idup;
+				if (entry.name != "." && entry.name != "..")
+					dir.name = entry.name.idup;
 			}
 			else if (entry.file_type == ext4_dir_entry_2.Type.file && cast(RegularFile) sf)
 			{

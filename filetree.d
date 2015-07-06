@@ -112,12 +112,14 @@ private
 class Directory : SomeFile
 {
 	Directory parent;
-	uint subdirectoryCount;
 	bool parentMismatch;
 	string name;
+	SomeFile[] children;
 
 	mixin CtorInodeNum;
 	mixin AcceptVisitor;
+
+	@property uint subdirectoryCount() const pure nothrow { return cast(uint) children.length; }
 
 	override @property FileStatus status() const pure nothrow
 	{
@@ -144,7 +146,7 @@ class Directory : SomeFile
 }
 
 ///
-private abstract class MultiplyLinkedFile : SomeFile
+abstract class MultiplyLinkedFile : SomeFile
 {
 	Link[] links;
 
@@ -190,9 +192,44 @@ class SymbolicLink : MultiplyLinkedFile
 ///
 class FileTree
 {
+	///
 	SomeFile[uint] filesByInodeNum;
 
-	private T get(T = SomeFile)(uint inodeNum)
+	private SomeFile[] _roots;
+	///
+	@property SomeFile[] roots() { return _roots; }
+
+	///
+	void updateRoots()
+	{
+		_roots.length = 0;
+		auto visitor = new class FileVisitor
+		{
+			void visitMLF(MultiplyLinkedFile m)
+			{
+				if (m.links.length == 0)
+					_roots ~= m;
+			}
+			void visit(Directory d)
+			{
+				if (!d.parent)
+					_roots ~= d;
+			}
+			void visit(RegularFile f)
+			{
+				visitMLF(f);
+			}
+			void visit(SymbolicLink l)
+			{
+				visitMLF(l);
+			}
+		};
+		foreach (f; filesByInodeNum)
+			f.accept(visitor);
+	}
+
+	///
+	T get(T = SomeFile)(uint inodeNum)
 		if (is(T : SomeFile))
 	{
 		SomeFile file = filesByInodeNum.get(inodeNum, null);
