@@ -152,7 +152,8 @@ struct GenericExtentRange(Cache)
 
 	invariant
 	{
-		assert(_treePath.empty || !headerIsOk || _treePath.top.nodeIndex < _treePath.top.header.eh_entries);
+		assert(_treePath.empty || !headerIsOk || (_treePath.top.header.eh_entries | _treePath.top.nodeIndex) == 0
+		    || _treePath.top.nodeIndex < _treePath.top.header.eh_entries);
 	}
 
 private:
@@ -160,8 +161,7 @@ private:
 	{
 		return !_treePath.empty
 			&& _treePath.top.header.ok
-			&& _treePath.top.header.eh_magic == EXT4_EXT_MAGIC
-			&& _treePath.top.header.eh_entries > 0;
+			&& _treePath.top.header.eh_magic == EXT4_EXT_MAGIC;
 	}
 
 	void pushNode(ulong headerBlockNum, uint headerOffset)
@@ -171,34 +171,38 @@ private:
 		_treeBlockNums.put(headerBlockNum);
 	}
 
-	// Set _current to the first extent of the leaf node.
-	// Return false and make _current a bad extent iff read error occured while descending.
-	bool descendToLeaf()
+	// Set _current to the first extent of the leaf node, or a bad extent
+	// if read error occured while descending.
+	void descendToLeaf()
 	{
 		if (_current.ok)
 			_current = Extent(0, _current.logicalBlockNum + _current.blockCount, 0, false);
 		if (_treePath.empty || !headerIsOk)
-			return false;
+			return;
 		while (_treePath.top.header.eh_depth > 0)
 		{
 			Cache.Struct!ext4_extent_idx idx = _cache.requestStruct!ext4_extent_idx(
 				_treePath.top.blockNum,
 				_treePath.top.arrayOffset + _treePath.top.nodeIndex * ext4_extent_idx.sizeof);
 			if (!idx.ok)
-				return false;
+				return;
 			_current.logicalBlockNum = idx.ei_block;
 			ulong blockNum = bitCat(idx.ei_leaf_hi, idx.ei_leaf_lo);
 			pushNode(blockNum, 0);
 			if (!headerIsOk)
-				return false;
+				return;
+		}
+		if (_treePath.top.header.eh_entries == 0)
+		{
+			_current = Extent(0, _current.logicalBlockNum + _current.blockCount, 0, true);
+			return;
 		}
 		Cache.Struct!ext4_extent extent = _cache.requestStruct!ext4_extent(
 			_treePath.top.blockNum,
 			_treePath.top.arrayOffset + _treePath.top.nodeIndex * ext4_extent_idx.sizeof);
 		if (!extent.ok)
-			return false;
+			return;
 		_current = Extent(extent.start, extent.logicalBlockNum, extent.len, true);
-		return true;
 	}
 
 	struct Node
@@ -308,11 +312,14 @@ unittest
 	assert(!range.empty);
 	assert(!range.front.ok);
 	assert(range.front.logicalBlockNum == 0);
-	cache.put(ext4_extent_header(EXT4_EXT_MAGIC, 0, 0, 0, 0), 13, 60, true);
+	// Test flat tree with empty header.
+	cache.put(ext4_extent_header(EXT4_EXT_MAGIC, 0, 4, 0, 0), 13, 60, true);
 	range = GenericExtentRange!TestCache(cache, 13, 60); //, 11 * ext4_extent.sizeof);
 	assert(!range.empty);
-	assert(!range.front.ok);
+	assert(range.front.ok);
 	assert(range.front.logicalBlockNum == 0);
+	assert(range.front.blockCount == 0);
+	assert(range.treeBlockNums == [ 13 ]);
 }
 
 unittest
