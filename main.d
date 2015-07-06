@@ -163,12 +163,87 @@ void showSummary(FileTree fileTree, Ext4 ext4)
 	writefln("%-30s%-(%20s%)", "unreadable data bytes", visitor.getFieldForAllTypes!"badByteCount"());
 }
 
+void showTree(FileTree fileTree)
+{
+	Directory currentDir;
+	uint indent;
+	ulong pipeMask;
+	auto visitor = new class FileVisitor
+	{
+		void visit(Directory d)
+		{
+			if (d.name)
+				writeln(d.name);
+			else if (d.inodeNum == 2)
+				writeln("/");
+			else
+				writefln("~~DIR@%s", d.inodeNum);
+			auto temp = currentDir;
+			currentDir = d;
+			++indent;
+			pipeMask |= 1UL << indent;
+			foreach (i, c; d.children)
+			{
+				foreach (j; 0 .. indent)
+				{
+					if (pipeMask & (1UL << j))
+						write("\x1b(0x\x1b(B ");
+					else
+						write("  ");
+				}
+				if (i == d.children.length - 1)
+				{
+					write("\x1b(0mq\x1b(B");
+					pipeMask &= ~(1UL << indent);
+				}
+				else
+					write("\x1b(0tq\x1b(B");
+				c.accept(this);
+			}
+			--indent;
+			currentDir = temp;
+		}
+
+		void visitMLF(MultiplyLinkedFile mlf, string placeholderName)
+		{
+			foreach (l; mlf.links)
+			{
+				if (l.parent is currentDir)
+				{
+					writeln(l.name);
+					return;
+				}
+			}
+			writefln("~~%s@%s", placeholderName, mlf.inodeNum);
+		}
+
+		void visit(RegularFile f)
+		{
+			visitMLF(f, "FILE");
+		}
+
+		void visit(SymbolicLink l)
+		{
+			visitMLF(l, "SYMLINK");
+		}
+	};
+	pipeMask = 1;
+	foreach (i, root; fileTree.roots)
+	{
+		if (i == fileTree.roots.length - 1)
+			pipeMask &= ~1UL;
+		write("*\x1b(0q\x1b(B");
+		root.accept(visitor);
+	}
+}
+
 void main(string[] args)
 {
 	bool forceScan;
 	bool summary;
 	ListMode listMode;
-	getopt(args, "force-scan", &forceScan, "list", &listMode, "summary", &summary);
+	bool tree;
+	getopt(args, "force-scan", &forceScan, "list", &listMode, "summary", &summary, "tree", &tree);
 
 	enforce(args.length >= 2, "Missing ext4 file system image name");
 	string imageName = args[1];
@@ -226,4 +301,6 @@ void main(string[] args)
 	listFiles(fileTree, ext4, listMode);
 	if (summary)
 		showSummary(fileTree, ext4);
+	if (tree)
+		showTree(fileTree);
 }
