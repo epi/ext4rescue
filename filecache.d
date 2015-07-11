@@ -140,7 +140,7 @@ private void readCommon(SomeFile sf, in char[][] fields)
 	sf.readableByteCount = to!ulong(fields[8]);
 }
 
-private void readLinks(FileTree fileTree, ref SomeFile.Link[] links, const(char[])[] fields)
+private void readLinks(FileTree fileTree, MultiplyLinkedFile mlf, const(char[])[] fields)
 in
 {
 	assert((fields.length & 1) == 0);
@@ -149,10 +149,9 @@ body
 {
 	while (fields.length)
 	{
-		uint parentInodeNum = to!uint(fields[0]);
-		links ~= RegularFile.Link(
-			parentInodeNum == 0 ? null : fileTree.get!Directory(parentInodeNum),
-			fields[1].idup);
+		Directory parent = fileTree.get!Directory(enforce(to!uint(fields[0]), "invalid file link"));
+		mlf.links ~= RegularFile.Link(parent, fields[1].idup);
+		parent.children ~= mlf;
 		fields = fields[2 .. $];
 	}
 }
@@ -162,7 +161,7 @@ private void readRegularFile(FileTree fileTree, in char[][] fields)
 	enforce(fields.length >= 9 && (fields.length & 1), text("invalid regular file entry", fields));
 	auto r = fileTree.get!RegularFile(to!uint(fields[0]));
 	readCommon(r, fields);
-	readLinks(fileTree, r.links, fields[9 .. $]);
+	readLinks(fileTree, r, fields[9 .. $]);
 }
 
 private void readDirectory(FileTree fileTree, in char[][] fields)
@@ -187,7 +186,7 @@ private void readSymbolicLink(FileTree fileTree, in char[][] fields)
 	enforce(fields.length >= 9 && (fields.length & 1), "invalid symbolic link entry");
 	auto l = fileTree.get!SymbolicLink(to!uint(fields[0]));
 	readCommon(l, fields);
-	readLinks(fileTree, l.links, fields[9 .. $]);
+	readLinks(fileTree, l, fields[9 .. $]);
 }
 
 static this()
