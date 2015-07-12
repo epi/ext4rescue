@@ -19,67 +19,79 @@ void extract(SomeFile f, Ext4 ext4, string destPath)
 		void visit(Directory d)
 		{
 			string tempdestPath = destPath;
+			destPath = buildPath(destPath, d.name ? d.name : text("~~DIR@", d.inodeNum));
 			scope(exit) destPath = tempdestPath;
 			Directory tempCurrentDir = currentDir;
-			scope(exit) tempCurrentDir = currentDir;
-			destPath = buildPath(destPath, d.name ? d.name : text("~~DIR@", d.inodeNum));
-			writeln("create   ", destPath);
+			currentDir = d;
+			scope(exit) currentDir = tempCurrentDir;
+			writeln("dir ", destPath);
 			mkdirRecurse(destPath);
 			foreach (c; d.children)
 			{
-				writeln(c);
+				writef("child %d {\n    ", c.inodeNum);
 				c.accept(this);
+				writeln("}");
 			}
 		}
 
-		string getName(MultiplyLinkedFile mlf)
+		string[] getNames(MultiplyLinkedFile mlf)
 		{
 			if (mlf.links.length == 0)
-				return text("~~FILE@", f.inodeNum);
+				return [ text("~~FILE@", f.inodeNum) ];
+			string[] result;
 			foreach (l; mlf.links)
 			{
-				if (l.parent is currentDir)
-					return l.name;
+				if (l.parent.inodeNum == currentDir.inodeNum)
+					result ~= l.name;
 			}
-			return mlf.links[0].name;
+			return result;
 		}
 
 		void visit(RegularFile f)
 		{
-			writeln("file");
-			string path = buildPath(destPath, getName(f));
-			string orig = writtenFiles.get(f.inodeNum, null);
-			if (orig)
+			foreach (name; getNames(f))
 			{
-				import core.sys.posix.unistd : link;
-				import std.file : errnoEnforce;
-				import std.string : toStringz;
-				writeln("hardlink ", path, " -> ", orig);
-				errnoEnforce(link(orig.toStringz(), path.toStringz()) == 0);
-				return;
-			}
-			writeln("write   ", path);
-			auto file = File(path, "wb");
-			auto range = ext4.inodes[f.inodeNum].extents;
-			foreach (extent; range)
-			{
-				if (extent.ok)
+				string path = buildPath(destPath, name);
+				string orig = writtenFiles.get(f.inodeNum, null);
+				if (orig)
 				{
-					file.seek(extent.logicalBlockNum * ext4.blockSize);
-					foreach (blockNum; extent.physicalBlockNum .. extent.physicalBlockNum + extent.blockCount)
+					import core.sys.posix.unistd : link;
+					import std.file : errnoEnforce;
+					import std.string : toStringz;
+					writeln("hardlink ", path, " -> ", orig);
+					errnoEnforce(link(orig.toStringz(), path.toStringz()) == 0);
+					return;
+				}
+				writeln("file ", path);
+				auto file = File(path, "wb");
+				auto range = ext4.inodes[f.inodeNum].extents;
+				foreach (extent; range)
+				{
+					if (extent.ok)
 					{
-						auto block = ext4.cache.request(blockNum);
-						file.rawWrite(block[]);
+						file.seek(extent.logicalBlockNum * ext4.blockSize);
+						while (extent.blockCount >= 16)
+						{
+							auto mme = ext4.cache.mapExtent(extent.physicalBlockNum, 16);
+							file.rawWrite(mme[]);
+							extent.physicalBlockNum += 16;
+							extent.blockCount -= 16;
+						}
+						if (extent.blockCount)
+						{
+							auto mme = ext4.cache.mapExtent(extent.physicalBlockNum, extent.blockCount);
+							file.rawWrite(mme[]);
+						}
 					}
 				}
+				writtenFiles[f.inodeNum] = path;
 			}
-			writtenFiles[f.inodeNum] = path;
 		}
 
 		void visit(SymbolicLink l)
 		{
-			string name = buildPath(destPath, getName(l));
-			writeln("symlink  ", name);
+			string path = buildPath(destPath, getNames(l)[0]);
+			writeln("symlink ", path);
 		}
 	});
 }
