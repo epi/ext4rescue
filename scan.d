@@ -58,14 +58,12 @@ private void scanDirectory(Ext4 ext4, FileTree fileTree, Directory thisDir)
 		else if (entry.file_type == ext4_dir_entry_2.Type.file)
 		{
 			RegularFile file = fileTree.get!RegularFile(entry.inode);
-			file.links ~= RegularFile.Link(thisDir, entry.name.idup);
-			thisDir.children ~= file;
+			file.addLink(thisDir, entry.name.idup);
 		}
 		else if (entry.file_type == ext4_dir_entry_2.Type.symlink)
 		{
 			SymbolicLink symlink = fileTree.get!SymbolicLink(entry.inode);
-			symlink.links ~= SymbolicLink.Link(thisDir, entry.name.idup);
-			thisDir.children ~= symlink;
+			symlink.addLink(thisDir, entry.name.idup);
 		}
 	}
 }
@@ -73,10 +71,7 @@ private void scanDirectory(Ext4 ext4, FileTree fileTree, Directory thisDir)
 private void associateParentWithDir(Directory parent, Directory dir)
 {
 	if (!dir.parent)
-	{
 		dir.parent = parent;
-		parent.children ~= dir;
-	}
 	else if (dir.parent !is parent)
 		dir.parentMismatch = true;
 }
@@ -186,7 +181,7 @@ private bool tryBlockAsRootDirData(Ext4 ext4, FileTree fileTree, ulong blockNum)
 				auto file = cast(RegularFile) sf;
 				if (file.links.length >= file.linkCount)
 					return false;
-				file.links ~= RegularFile.Link(fileTree.get!Directory(2), entry.name.idup);
+				file.addLink(fileTree.get!Directory(2), entry.name.idup);
 			}
 		}
 		offset += entry.rec_len;

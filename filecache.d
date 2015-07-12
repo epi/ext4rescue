@@ -77,9 +77,9 @@ private class CacheWriter : FileVisitor
 			sf.blockMapIsOk, sf.mapByteCount, sf.reachableByteCount, sf.readableByteCount);
 	}
 
-	private void writeLinks(in SomeFile.Link[] links)
+	private void writeLinks(MultiplyLinkedFile mlf)
 	{
-		foreach (link; links)
+		foreach (link; mlf.links)
 		{
 			outfile.writef("/%d/%s",
 				link.parent is null ? 0 : link.parent.inodeNum, link.name);
@@ -96,14 +96,14 @@ private class CacheWriter : FileVisitor
 	void visit(RegularFile r)
 	{
 		writeCommon(r, 'r');
-		writeLinks(r.links);
+		writeLinks(r);
 		outfile.writeln();
 	}
 
 	void visit(SymbolicLink l)
 	{
 		writeCommon(l, 'l');
-		writeLinks(l.links);
+		writeLinks(l);
 		outfile.writeln();
 	}
 }
@@ -150,8 +150,7 @@ body
 	while (fields.length)
 	{
 		Directory parent = fileTree.get!Directory(enforce(to!uint(fields[0]), "invalid file link"));
-		mlf.links ~= RegularFile.Link(parent, fields[1].idup);
-		parent.children ~= mlf;
+		mlf.addLink(parent, fields[1].idup);
 		fields = fields[2 .. $];
 	}
 }
@@ -171,10 +170,7 @@ private void readDirectory(FileTree fileTree, in char[][] fields)
 	readCommon(d, fields);
 	uint parentInodeNum = to!uint(fields[9]);
 	if (parentInodeNum)
-	{
 		d.parent = fileTree.get!Directory(parentInodeNum);
-		d.parent.children ~= d;
-	}
 	else
 		d.parent = null;
 	d.parentMismatch = !!to!uint(fields[10]);
@@ -229,4 +225,46 @@ FileTree readCachedFileTree(string imageName, string ddrescueLogName)
 	}
 	result.updateRoots();
 	return result;
+}
+
+unittest
+{
+	import std.process: thisProcessID;
+	auto tempFileName = buildPath(tempDir(), text("ext4rescue.test.filecache.", thisProcessID));
+	scope(exit) remove(tempFileName);
+	std.file.write(tempFileName, null);
+
+	{
+		auto ft = new FileTree;
+		auto root = ft.get!Directory(2);
+		auto foo = ft.get!Directory(20);
+		foo.name = "foo";
+		foo.parent = root;
+		auto bar = ft.get!Directory(21);
+		bar.name = "bar";
+		bar.parent = foo;
+		auto file = ft.get!RegularFile(22);
+		file.addLink(foo, "file");
+		cacheFileTree(tempFileName, null, ft);
+	}
+
+	{
+		auto ft = readCachedFileTree(tempFileName, null);
+		assert(ft.get(2) !is null);
+		auto root = ft.get!Directory(2);
+		assert(root.parent is null);
+		assert(ft.get(20) !is null);
+		auto foo = ft.get!Directory(20);
+		assert(foo.parent is root);
+		assert(foo.name == "foo");
+		assert(ft.get(21) !is null);
+		auto bar = ft.get!Directory(21);
+		assert(bar.parent is foo);
+		assert(bar.name == "bar");
+		assert(ft.get(22) !is null);
+		auto file = ft.get!RegularFile(22);
+		assert(file.links.length == 1);
+		assert(file.links[0].parent is foo);
+		assert(file.links[0].name == "file");
+	}
 }

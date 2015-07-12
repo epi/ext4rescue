@@ -1,5 +1,5 @@
 all_modules  := bits blockcache ddrescue defs ext4 filetree scan filecache
-test_modules := bits blockcache ddrescue defs ext4 filetree
+test_modules := bits blockcache ddrescue defs ext4 filetree filecache
 docdir       := doc
 
 all_sources  := $(foreach m,$(all_modules),$(m).d)
@@ -11,7 +11,7 @@ all: ext4rescue
 all: DFLAGS = -release -inline
 .PHONY: all
 
-debug: ext4rescue 
+debug: ext4rescue
 debug: DFLAGS = -debug -g
 .PHONY: debug
 

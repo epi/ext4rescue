@@ -29,12 +29,6 @@ import std.path;
 /// Root of the hierarchy
 abstract class SomeFile
 {
-	struct Link
-	{
-		Directory parent;
-		string name;
-	}
-
 	uint inodeNum;
 	uint linkCount;
 	ulong byteCount;
@@ -111,20 +105,46 @@ private
 ///
 class Directory : SomeFile
 {
-	Directory parent;
+	private Directory _parent;
+	private SomeFile[] _children;
+	private uint _subdirectoryCount;
+
 	bool parentMismatch;
 	string name;
-	SomeFile[] children;
 
 	mixin CtorInodeNum;
 	mixin AcceptVisitor;
 
-	@property uint subdirectoryCount() const pure nothrow { return cast(uint) children.length; }
+	@property inout(Directory) parent() inout pure nothrow
+	{
+		return _parent;
+	}
+
+	@property void parent(Directory d)
+	{
+		assert(!_parent);
+		_parent = d;
+		if (d !is null)
+		{
+			d._children ~= this;
+			++d._subdirectoryCount;
+		}
+	}
+
+	@property auto children() pure nothrow
+	{
+		return _children[];
+	}
+
+	@property uint subdirectoryCount() const pure nothrow
+	{
+		return _subdirectoryCount;
+	}
 
 	override @property FileStatus status() const pure nothrow
 	{
 		auto result = super.status;
-		if (inodeIsOk && subdirectoryCount != linkCount - 2)
+		if (inodeIsOk && _subdirectoryCount != linkCount - 2)
 			result.missingLinks = true;
 		if (inodeNum == 2)
 			return result;
@@ -141,26 +161,43 @@ class Directory : SomeFile
 	///
 	override @property uint foundLinkCount() const pure nothrow
 	{
-		return subdirectoryCount + 1 + !!name;
+		return _subdirectoryCount + 1 + !!name;
 	}
 }
 
 ///
 abstract class MultiplyLinkedFile : SomeFile
 {
-	Link[] links;
+	struct Link
+	{
+		Directory parent;
+		string name;
+	}
+
+	private Link[] _links;
 
 	mixin CtorInodeNum;
+
+	void addLink(Directory parent, string name)
+	{
+		parent._children ~= this;
+		_links ~= Link(parent, name);
+	}
+
+	@property auto links() pure nothrow
+	{
+		return _links[];
+	}
 
 	override @property FileStatus status() const pure nothrow
 	{
 		FileStatus result = super.status;
 		if (!inodeIsOk)
 			return result;
-		if (links.length != linkCount)
+		if (_links.length != linkCount)
 		{
 			result.missingLinks = true;
-			if (links.length == 0)
+			if (_links.length == 0)
 			{
 				result.nameUnknown = true;
 				result.parentUnknown = true;
@@ -171,7 +208,7 @@ abstract class MultiplyLinkedFile : SomeFile
 
 	override @property uint foundLinkCount() const pure nothrow
 	{
-		return cast(uint) links.length;
+		return cast(uint) _links.length;
 	}
 }
 
@@ -315,15 +352,12 @@ unittest
 	auto foo = ft.get!Directory(20);
 	foo.name = "foo";
 	foo.parent = root;
-	root.children ~= foo;
 	auto bar = ft.get!Directory(21);
 	bar.name = "bar";
 	bar.parent = foo;
-	foo.children ~= bar;
 	auto baz = ft.get!Directory(22);
 	baz.name = "baz";
 	baz.parent = root;
-	root.children ~= baz;
 	ft.updateRoots();
 	assertThrown(ft.getByPath("/badname"));
 	assert(ft.getByPath("/").inodeNum == 2);
@@ -352,7 +386,7 @@ class NamingVisitor : FileVisitor
 			return prependWithParentPath(parent.parent, buildPath(getDirectoryName(parent),  name));
 	}
 
-	private bool setFromLinks(in SomeFile.Link[] links)
+	private bool setFromLinks(in MultiplyLinkedFile.Link[] links)
 	{
 		names.length = 0;
 		if (links.length)
@@ -447,7 +481,7 @@ class ProblemDescriptionVisitor : FileVisitor
 		return true;
 	}
 
-	private void checkLinks(in SomeFile.Link[] links, uint linkCount)
+	private void checkLinks(in MultiplyLinkedFile.Link[] links, uint linkCount)
 	{
 		if (links.length == 0)
 			problems ~= "No link found";
@@ -514,10 +548,10 @@ unittest
 	assert(visitor.names[] == [ "/dir1/dir2" ]);
 	visitor.visit(file1);
 	assert(visitor.names[] == [ "~~@UNKNOWN_PARENT/~~FILE@412" ]);
-	file1.links ~= RegularFile.Link(dir2, "file1");
+	file1.addLink(dir2, "file1");
 	visitor.visit(file1);
 	assert(visitor.names[] == [ "/dir1/dir2/file1" ]);
-	file1.links ~= RegularFile.Link(dir1, "file1");
+	file1.addLink(dir1, "file1");
 	visitor.visit(file1);
 	assert(visitor.names[] == [ "/dir1/dir2/file1", "/dir1/file1" ]);
 }
