@@ -228,6 +228,63 @@ class FileTree
 			f.accept(visitor);
 	}
 
+	private SomeFile findByName(Directory dir, SomeFile[] files, in char[] name)
+	{
+		SomeFile result;
+		foreach (file; files)
+		{
+			import std.stdio;
+			file.accept(new class FileVisitor
+			{
+				void visit(Directory d)
+				{
+					if (name == "/" && d.inodeNum == 2)
+						result = d;
+					else if (d.name && d.name == name)
+						result = d;
+				}
+				void visitMLF(MultiplyLinkedFile mlf)
+				{
+					foreach (link; mlf.links)
+					{
+						if (link.parent is dir && link.name == name)
+							result = mlf;
+					}
+				}
+				void visit(RegularFile f)
+				{
+					visitMLF(f);
+				}
+				void visit(SymbolicLink l)
+				{
+					visitMLF(l);
+				}
+			});
+		}
+		return enforce(result, text("File not found: ", name));
+	}
+
+	///
+	SomeFile getByPath(in char[] path)
+	{
+		auto splitter = pathSplitter(path);
+		if (splitter.empty)
+			return null;
+		auto name = splitter.front;
+		SomeFile result = findByName(null, roots, name);
+		splitter.popFront();
+		while (!splitter.empty)
+		{
+			Directory currentDir = enforce(
+				cast(Directory) result,
+				text(name, " is not a directory"));
+			name = splitter.front;
+			result = findByName(currentDir, currentDir.children, name);
+			splitter.popFront();
+		}
+		return result;
+	}
+
 	///
 	T get(T = SomeFile)(uint inodeNum)
 		if (is(T : SomeFile))
@@ -249,6 +306,30 @@ class FileTree
 		return enforce(cast(T) file,
 			text(inodeNum, " is of type ", typeid(file).name, " but ", typeid(T).name, " was requested"));
 	}
+}
+
+unittest
+{
+	auto ft = new FileTree;
+	auto root = ft.get!Directory(2);
+	auto foo = ft.get!Directory(20);
+	foo.name = "foo";
+	foo.parent = root;
+	root.children ~= foo;
+	auto bar = ft.get!Directory(21);
+	bar.name = "bar";
+	bar.parent = foo;
+	foo.children ~= bar;
+	auto baz = ft.get!Directory(22);
+	baz.name = "baz";
+	baz.parent = root;
+	root.children ~= baz;
+	ft.updateRoots();
+	assertThrown(ft.getByPath("/badname"));
+	assert(ft.getByPath("/").inodeNum == 2);
+	assert(ft.getByPath("/foo").inodeNum == 20);
+	assert(ft.getByPath("/foo/bar").inodeNum == 21);
+	assert(ft.getByPath("/baz").inodeNum == 22);
 }
 
 class NamingVisitor : FileVisitor
