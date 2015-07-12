@@ -541,6 +541,24 @@ class Ext4
 			return inodeStruct.mode.type == Mode.Type.symlink && this.blockCount - eaBlockCount == 0;
 		}
 
+		string getSymlinkTarget()
+		{
+			if (isFastSymlink)
+			{
+				enforce(inodeStruct.size <= inodeStruct.i_data.length, "Invalid file size");
+				return inodeStruct.i_data[0 .. inodeStruct.size].idup;
+			}
+			else
+			{
+				enforce(inodeStruct.size <= ext4.blockSize, "Invalid file size");
+				auto range = extents;
+				if (range.empty || !range.front.ok)
+					throw new Exception("Cannot read symlink target");
+				auto block = ext4.cache.request(range.front.physicalBlockNum);
+				return (cast(const(char[])) block[0 .. inodeStruct.size]).idup;
+			}
+		}
+
 		DirIterator readAsDir()
 		{
 			return DirIterator(ext4, inodeNum);
