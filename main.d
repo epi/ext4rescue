@@ -9,12 +9,12 @@
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
 	(at your option) any later version.
-	
+
 	ext4rescue is distributed in the hope that it will be useful,
 	but WITHOUT ANY WARRANTY; without even the implied warranty of
 	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 	GNU General Public License for more details.
-	
+
 	You should have received a copy of the GNU General Public License
 	along with ext4rescue.  If not, see $(LINK http://www.gnu.org/licenses/).
 */
@@ -28,6 +28,7 @@ import std.typecons : scoped;
 
 import ddrescue;
 import ext4;
+import extract;
 import filecache;
 import filetree;
 import scan;
@@ -243,7 +244,10 @@ void main(string[] args)
 	bool summary;
 	ListMode listMode;
 	bool tree;
-	getopt(args, "force-scan", &forceScan, "list", &listMode, "summary", &summary, "tree", &tree);
+	string[] srcPaths;
+	string destPath;
+
+	getopt(args, "force-scan", &forceScan, "list", &listMode, "summary", &summary, "tree", &tree, "from", &srcPaths, "to", &destPath);
 
 	enforce(args.length >= 2, "Missing ext4 file system image name");
 	string imageName = args[1];
@@ -303,4 +307,19 @@ void main(string[] args)
 		showSummary(fileTree, ext4);
 	if (tree)
 		showTree(fileTree);
+
+	if (destPath)
+	{
+		SomeFile[] srcFiles;
+		if (srcPaths.length)
+		{
+			foreach (path; srcPaths)
+				srcFiles ~= fileTree.getByPath(path);
+		}
+		else
+			srcFiles = fileTree.roots[];
+
+		foreach (file; srcFiles)
+			extract.extract(file, ext4, destPath);
+	}
 }

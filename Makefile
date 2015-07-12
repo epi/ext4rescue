@@ -1,4 +1,4 @@
-all_modules  := bits blockcache ddrescue defs ext4 filetree scan filecache
+all_modules  := bits blockcache ddrescue defs ext4 filetree scan filecache extract
 test_modules := bits blockcache ddrescue defs ext4 filetree filecache
 docdir       := doc
 
