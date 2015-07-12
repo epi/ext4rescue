@@ -106,7 +106,7 @@ private
 class Directory : SomeFile
 {
 	private Directory _parent;
-	private SomeFile[] _children;
+	private SomeFile[uint] _children;
 	private uint _subdirectoryCount;
 
 	bool parentMismatch;
@@ -122,18 +122,31 @@ class Directory : SomeFile
 
 	@property void parent(Directory d)
 	{
-		assert(!_parent);
+		enforce!Error(!_parent);
 		_parent = d;
 		if (d !is null)
-		{
-			d._children ~= this;
-			++d._subdirectoryCount;
-		}
+			d.addChild(this);
 	}
 
 	@property auto children() pure nothrow
 	{
-		return _children[];
+		static struct Result
+		{
+			Directory d;
+			@property auto length() const pure nothrow { return d._children.length; }
+			auto opSlice() pure nothrow { return d._children.byValue; }
+		}
+		return Result(this);
+	}
+
+	private void addChild(SomeFile f)
+	{
+		auto existing = _children.get(f.inodeNum, null);
+		if (existing is f)
+			return;
+		enforce!Error(existing is null);
+		_children[f.inodeNum] = f;
+		++_subdirectoryCount;
 	}
 
 	@property uint subdirectoryCount() const pure nothrow
@@ -180,7 +193,7 @@ abstract class MultiplyLinkedFile : SomeFile
 
 	void addLink(Directory parent, string name)
 	{
-		parent._children ~= this;
+		parent.addChild(this);
 		_links ~= Link(parent, name);
 	}
 
@@ -265,7 +278,7 @@ class FileTree
 			f.accept(visitor);
 	}
 
-	private SomeFile findByName(Directory dir, SomeFile[] files, in char[] name)
+	private SomeFile findByName(R)(Directory dir, R files, in char[] name)
 	{
 		SomeFile result;
 		foreach (file; files)
@@ -358,12 +371,18 @@ unittest
 	auto baz = ft.get!Directory(22);
 	baz.name = "baz";
 	baz.parent = root;
+	auto qux = ft.get!RegularFile(23);
+	qux.addLink(bar, "qux");
+	qux.addLink(bar, "quux");
 	ft.updateRoots();
 	assertThrown(ft.getByPath("/badname"));
 	assert(ft.getByPath("/").inodeNum == 2);
 	assert(ft.getByPath("/foo").inodeNum == 20);
 	assert(ft.getByPath("/foo/bar").inodeNum == 21);
 	assert(ft.getByPath("/baz").inodeNum == 22);
+	assert(ft.getByPath("/foo/bar/qux").inodeNum == 23);
+	assert(ft.getByPath("/foo/bar/quux").inodeNum == 23);
+	assert(ft.getByPath("/foo/bar/qux") is ft.getByPath("/foo/bar/quux"));
 }
 
 class NamingVisitor : FileVisitor

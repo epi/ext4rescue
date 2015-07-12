@@ -25,6 +25,7 @@ import std.exception;
 import std.getopt;
 import std.stdio;
 import std.typecons : scoped;
+import std.range : enumerate;
 
 import ddrescue;
 import ext4;
@@ -183,7 +184,7 @@ void showTree(FileTree fileTree)
 			currentDir = d;
 			++indent;
 			pipeMask |= 1UL << indent;
-			foreach (i, c; d.children)
+			foreach (i, c; d.children[].enumerate())
 			{
 				foreach (j; 0 .. indent)
 				{
