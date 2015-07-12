@@ -321,6 +321,6 @@ void main(string[] args)
 			srcFiles = fileTree.roots[];
 
 		foreach (file; srcFiles)
-			extract.extract(file, ext4, destPath);
+			extract.extract(file, ext4, new DirectoryExtractTarget(destPath));
 	}
 }
