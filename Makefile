@@ -8,11 +8,11 @@ test_targets := $(subst /,-,$(foreach m,$(test_modules),$(m).lst))
 test_prog_objs := $(addsuffix .o,$(test_progs))
 
 all: ext4rescue
-all: DFLAGS = -release -inline
+all: DFLAGS = -release -inline -w
 .PHONY: all
 
 debug: ext4rescue
-debug: DFLAGS = -debug -g
+debug: DFLAGS = -debug -g -w
 .PHONY: debug
 
 ext4rescue: $(all_sources) main.d
