@@ -1,0 +1,7 @@
+name "ext4rescue"
+homepage "http://github.com/epi/ext4rescue"
+description "Data recovery tool for ext[234]."
+copyright "Copyright © 2014, 2015, Adrian Matoga"
+authors "Adrian Matoga"
+license "GPL-3.0"
+libs "guestfs"

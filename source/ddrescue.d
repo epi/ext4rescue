@@ -83,7 +83,7 @@ bool allGood(in Region[] regions)
 	return true;
 }
 
-/// Returns true iff all regions in the file position range [begin, end) are good.
+/// Returns true iff all regions in the file position range [begin, end$(RPAREN) are good.
 bool allGood(in Region[] regions, ulong begin, ulong end)
 {
 	size_t bpos = locate(regions, begin);
@@ -91,7 +91,7 @@ bool allGood(in Region[] regions, ulong begin, ulong end)
 	return allGood(regions[bpos .. epos + 1]);
 }
 
-/// Returns number of readable bytes within file position range [begin, end).
+/// Returns number of readable bytes within file position range [begin, end$(RPAREN).
 ulong countReadableBytes(in Region[] regions, ulong begin, ulong end)
 in
 {
@@ -125,7 +125,7 @@ body
 	return result;
 }
 
-/// Returns number of bytes within file position range [begin, end) which are bad.
+/// Returns number of bytes within file position range [begin, end$(RPAREN) which are bad.
 ulong countUnreadableBytes(in Region[] regions, ulong begin, ulong end)
 {
 	return end - begin - countReadableBytes(regions, begin, end);
