@@ -725,6 +725,7 @@ version(unittest)
 	class Guestfs
 	{
 		guestfs_h* g;
+		bool launched;
 
 		this()
 		{
@@ -740,7 +741,8 @@ version(unittest)
 		{
 			if (g)
 			{
-				guestfs_umount_all(g);
+				if (launched)
+					guestfs_umount_all(g);
 				guestfs_close(g);
 				g = null;
 			}
@@ -749,6 +751,8 @@ version(unittest)
 		void opDispatch(string op, T...)(T args)
 		{
 			this.enforce(mixin("guestfs_" ~ op)(g, args) == 0);
+			static if (op == "launch")
+				launched = true;
 		}
 
 		T enforce(T)(T value, lazy const(char)[] msg = null, string file = __FILE__, ulong line =  cast(ulong) __LINE__)
