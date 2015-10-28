@@ -572,6 +572,16 @@ class Ext4
 			return ExtentRange(ext4._cache, blockNum, offset); //, cast(uint) ext4_inode.i_block.sizeof);
 		}
 
+		@property uint uid() const
+		{
+			return bitCat(inodeStruct.l_i_uid_high, inodeStruct.i_uid);
+		}
+
+		@property uint gid() const
+		{
+			return bitCat(inodeStruct.l_i_gid_high, inodeStruct.i_gid);
+		}
+
 		Ext4 ext4;
 		uint inodeNum;
 		CachedStruct!ext3_inode inodeStruct;

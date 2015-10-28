@@ -21,6 +21,7 @@ interface ExtractTarget
 	OutputStream writeFile(in char[] path);
 	void link(in char[] oldPath, in char[] newPath);
 	void symlink(in char[] oldPath, in char[] newPath);
+	void setAttr(in char[] path, Ext4.Inode inode);
 }
 
 class DirectoryExtractTarget : ExtractTarget
@@ -58,7 +59,8 @@ class DirectoryExtractTarget : ExtractTarget
 		};
 	}
 
-	import core.sys.posix.unistd : link, symlink;
+	import core.sys.posix.sys.stat : chmod;
+	import core.sys.posix.unistd : link, symlink, lchown;
 	import std.file : errnoEnforce;
 	import std.string : toStringz;
 
@@ -76,11 +78,24 @@ class DirectoryExtractTarget : ExtractTarget
 			buildPath(_destPath, newPath).toStringz()) == 0);
 	}
 
+	void setAttr(in char[] path, Ext4.Inode inode)
+	{
+		if (!inode.ok)
+			return;
+		errnoEnforce(chmod(
+			buildPath(_destPath, path).toStringz(),
+			inode.mode.mode & octal!"7777") == 0);
+		errnoEnforce(lchown(
+			buildPath(_destPath, path).toStringz(),
+			inode.uid, inode.gid) == 0);
+	}
+
 	private string _destPath;
 }
 
 void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 {
+	import std.range : repeat, take;
 	root.accept(new class FileVisitor
 	{
 		Directory currentDir;
@@ -104,10 +119,11 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 			Directory tempCurrentDir = currentDir;
 			currentDir = d;
 			scope(exit) currentDir = tempCurrentDir;
-			writeln("dir ", currentPath);
+			writeln("d ", currentPath);
 			target.mkdir(currentPath);
 			foreach (c; d.children)
 				c.accept(this);
+			target.setAttr(currentPath, ext4.inodes[d.inodeNum]);
 		}
 
 		private string[] getNames(MultiplyLinkedFile mlf)
@@ -128,8 +144,9 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 			string orig = writtenFiles.get(inodeNum, null);
 			if (!orig)
 				return false;
-			writeln("hardlink ", path, " -> ", orig);
+			writeln("h ", path, " -> ", orig);
 			target.link(orig, path);
+			target.setAttr(path, ext4.inodes[inodeNum]);
 			return true;
 		}
 
@@ -140,14 +157,16 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 				string path = buildPath(currentPath, name);
 				if (hardlink(f.inodeNum, path))
 					return;
-				writeln("file ", path);
+				writeln("f ", path);
 				auto stream = target.writeFile(path);
 				scope(exit) stream.close();
 				auto inode = ext4.inodes[f.inodeNum];
+				if (!inode.ok)
+					break;
 				auto range = inode.extents;
 				while (!range.empty)
 				{
-					auto extent = range.front;
+					Extent extent = range.front;
 					range.popFront();
 					if (extent.ok && extent.blockCount)
 					{
@@ -170,11 +189,14 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 							import std.exception : enforce;
 							offset = extent.logicalBlockNum * ext4.blockSize;
 							size_t len = cast(size_t) inode.size - offset;
-							enforce(len <= mme.length, "Invalid file size");
-							stream.rawWrite(mme[0 .. len]);
+							if (len <= mme.length)
+								stream.rawWrite(mme[0 .. len]);
+							else // there might be unallocated blocks at the end of the file
+								stream.rawWrite(mme[]);
 						}
 					}
 				}
+				target.setAttr(path, inode);
 				writtenFiles[f.inodeNum] = path;
 			}
 		}
@@ -187,9 +209,12 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 				if (hardlink(l.inodeNum, path))
 					return;
 				auto inode = ext4.inodes[l.inodeNum];
+				if (!inode.ok)
+					return;
 				string orig = inode.getSymlinkTarget();
-				writeln("symlink ", path, " -> ", orig);
+				writeln("l ", path, " -> ", orig);
 				target.symlink(orig, path);
+				target.setAttr(path, inode);
 				writtenFiles[l.inodeNum] = path;
 			}
 		}
