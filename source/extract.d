@@ -62,32 +62,38 @@ class DirectoryExtractTarget : ExtractTarget
 	import core.sys.posix.sys.stat : chmod;
 	import core.sys.posix.unistd : link, symlink, lchown;
 	import std.file : errnoEnforce;
-	import std.string : toStringz;
+	import std.string : toStringz, format;
 
 	void link(in char[] oldPath, in char[] newPath)
 	{
 		errnoEnforce(link(
 			buildPath(_destPath, oldPath).toStringz(),
-			buildPath(_destPath, newPath).toStringz()) == 0);
+			buildPath(_destPath, newPath).toStringz()) == 0,
+			format("Failed to create hard link %s -> %s", newPath, oldPath));
 	}
 
 	void symlink(in char[] oldPath, in char[] newPath)
 	{
 		errnoEnforce(symlink(
-			buildPath(_destPath, oldPath).toStringz(),
-			buildPath(_destPath, newPath).toStringz()) == 0);
+			oldPath.toStringz(),
+			buildPath(_destPath, newPath).toStringz()) == 0,
+			format("Failed to create symbolic link %s -> %s", newPath, oldPath));
 	}
 
 	void setAttr(in char[] path, Ext4.Inode inode)
 	{
+		import defs : Mode;
 		if (!inode.ok)
 			return;
-		errnoEnforce(chmod(
-			buildPath(_destPath, path).toStringz(),
-			inode.mode.mode & octal!"7777") == 0);
-		errnoEnforce(lchown(
-			buildPath(_destPath, path).toStringz(),
-			inode.uid, inode.gid) == 0);
+		auto pathz = buildPath(_destPath, path).toStringz();
+		if (inode.mode.type != Mode.Type.symlink)
+		{
+			uint mode = inode.mode.mode & octal!"7777";
+			errnoEnforce(chmod(pathz, mode) == 0,
+				format("Failed to set mode %04o for file %s", mode, path));
+		}
+		errnoEnforce(lchown(pathz, inode.uid, inode.gid) == 0,
+			format("Failed to set uid/gid to %d/%d for file %s", inode.uid, inode.gid, path));
 	}
 
 	private string _destPath;
