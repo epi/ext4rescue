@@ -545,15 +545,17 @@ class Ext4
 		{
 			if (isFastSymlink)
 			{
-				enforce(inodeStruct.size <= inodeStruct.i_data.length, "Invalid file size");
+				enforce(inodeStruct.size <= inodeStruct.i_data.length,
+					text("Symlink target path too long: ", inodeStruct.size, " bytes"));
 				return inodeStruct.i_data[0 .. inodeStruct.size].idup;
 			}
 			else
 			{
-				enforce(inodeStruct.size <= ext4.blockSize, "Invalid file size");
+				enforce(inodeStruct.size <= ext4.blockSize,
+					text("Symlink target path too long: ", inodeStruct.size, " bytes"));
 				auto range = extents;
 				if (range.empty || !range.front.ok)
-					throw new Exception("Cannot read symlink target");
+					throw new Exception("Symlink target path is unreadable");
 				auto block = ext4.cache.request(range.front.physicalBlockNum);
 				return (cast(const(char[])) block[0 .. inodeStruct.size]).idup;
 			}
