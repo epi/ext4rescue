@@ -242,6 +242,58 @@ void showTree(FileTree fileTree)
 // return 2 if command line could not be parsed
 private int errorCode = 2;
 
+bool showHelp(string[] args)
+{
+	bool helpWanted;
+	getopt(args, std.getopt.config.passThrough, "h|help", &helpWanted);
+	if (!helpWanted)
+		return false;
+
+	errorCode = 1;
+
+	enum consoleTextWhite = "\x1b[1;37m";
+	enum consoleTextReset = "\x1b[0m";
+
+	writeln(
+		"ext4rescue is a tool for automated data recovery from ext4 file systems that\n" ~
+		"have been corrupted due to a damage of the underlying physical media.\n\n" ~
+		"Usage: " ~ args[0] ~ " [OPTION]... IMAGE [DDRESCUE_LOG]\n" ~
+		"       " ~ args[0] ~ " [OPTION]... -L bad|all [-r] [DIR]...\n\n" ~
+		"The first syntax is used to analyze ext4 file system IMAGE and optionally\n" ~
+		"extract files from it.\n" ~
+		"If DDRESCUE_LOG file is not given, the IMAGE is assumed to be entirely correct.\n" ~
+		"Upon extraction, files with issues are marked with extended attribute\n" ~
+		"user.ext4rescue.status.\n" ~
+		"The second syntax (with -L) can be used to display the status of previously\n" ~
+		"extracted files.\n\n" ~
+		"Mandatory arguments to long options are mandatory for short options too.\n" ~
+		" -s  --summary       Show collective statistics of the damaged file system.\n" ~
+		" -l  --list=all|bad  List files and their attributes.\n" ~
+		" -T  --tree          List all files in the form of a tree.\n" ~
+		" -t  --to=DIR        Extract files to the specified DIR.\n" ~
+		" -f  --from=PATH     Specify PATHs to extract (can be used multiple times).\n" ~
+		"                     If not specified, everything is extracted.\n" ~
+		" -F  --force-scan    Analyze the disk image even if cached analysis result\n" ~
+		"                     is present.\n" ~
+		" -L  --list-extracted=all|bad\n" ~
+		"                     List previously extracted files.\n" ~
+		" -r  --recursive     Only with -L: list files recursively.\n" ~
+		" -h  --help          Print this help.\n\n" ~
+		"Status letters:\n" ~
+		" i  The inode is not readable\n" ~
+		" p  Parent directory is not known\n" ~
+		" n  No name associated with the file has been found\n" ~
+		" l  Some links to the file are missing\n" ~
+		" m  Block map or extent tree is partially or entirely damaged\n" ~
+		" d  Some or all data blocks are damaged\n\n" ~
+		consoleTextWhite ~
+		"IMPORTANT!!! Use GNU ddrescue(1) first to create a copy of the damaged media.\n" ~
+		"ext4rescue used directly on such media will not work correctly and may cause\n" ~
+		"further damage!" ~
+		consoleTextReset);
+	return true;
+}
+
 bool listExtractedFiles(string[] args)
 {
 	import std.path : buildPath;
@@ -303,6 +355,9 @@ int main(string[] args)
 
 	try
 	{
+		if (showHelp(args))
+			return 0;
+
 		if (listExtractedFiles(args))
 			return 0;
 
