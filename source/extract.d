@@ -1,7 +1,6 @@
 module extract;
 
 import std.conv;
-import std.file;
 import std.path;
 import std.stdio;
 
@@ -22,6 +21,7 @@ interface ExtractTarget
 	void link(in char[] oldPath, in char[] newPath);
 	void symlink(in char[] oldPath, in char[] newPath);
 	void setAttr(in char[] path, Ext4.Inode inode);
+	void setStatus(in char[] path, FileStatus status);
 }
 
 class DirectoryExtractTarget : ExtractTarget
@@ -33,6 +33,7 @@ class DirectoryExtractTarget : ExtractTarget
 
 	void mkdir(in char[] path)
 	{
+		import std.file : mkdirRecurse;
 		mkdirRecurse(buildPath(_destPath, path));
 	}
 
@@ -61,6 +62,8 @@ class DirectoryExtractTarget : ExtractTarget
 
 	import core.sys.posix.sys.stat : chmod;
 	import core.sys.posix.unistd : link, symlink, lchown;
+	import core.sys.linux.sys.xattr : lsetxattr;
+	import core.stdc.errno : errno, ENODATA;
 	import std.file : errnoEnforce;
 	import std.string : toStringz, format;
 
@@ -96,6 +99,17 @@ class DirectoryExtractTarget : ExtractTarget
 			format("Failed to set uid/gid to %d/%d for file %s", inode.uid, inode.gid, path));
 	}
 
+	void setStatus(in char[] path, FileStatus status)
+	{
+		auto pathz = buildPath(_destPath, path).toStringz();
+		if (!status.ok)
+		{
+			auto statstr = format("%s", status);
+			errnoEnforce(lsetxattr(pathz, "user.ext4rescue.status", statstr.ptr, statstr.length, 0) == 0,
+				format("Failed to set status for file %s (lsetxattr)", path));
+		}
+	}
+
 	private string _destPath;
 }
 
@@ -129,6 +143,7 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 			target.mkdir(currentPath);
 			foreach (c; d.children)
 				c.accept(this);
+			target.setStatus(currentPath, d.status);
 			target.setAttr(currentPath, ext4.inodes[d.inodeNum]);
 		}
 
@@ -201,6 +216,7 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 						}
 					}
 				}
+				target.setStatus(currentPath, f.status);
 				target.setAttr(path, inode);
 				writtenFiles[f.inodeNum] = path;
 			}
@@ -219,6 +235,7 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 				string orig = inode.getSymlinkTarget();
 				writeln("l ", path, " -> ", orig);
 				target.symlink(orig, path);
+				target.setStatus(currentPath, l.status);
 				target.setAttr(path, inode);
 				writtenFiles[l.inodeNum] = path;
 			}
