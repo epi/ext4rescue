@@ -152,7 +152,6 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 				return false;
 			writeln("h ", path, " -> ", orig);
 			target.link(orig, path);
-			target.setAttr(path, ext4.inodes[inodeNum]);
 			return true;
 		}
 
