@@ -242,6 +242,56 @@ void showTree(FileTree fileTree)
 // return 2 if command line could not be parsed
 private int errorCode = 2;
 
+bool listExtractedFiles(string[] args)
+{
+	import std.path : buildPath;
+	import std.file : dirEntries, SpanMode;
+	import std.string : toStringz;
+	import std.algorithm : splitter, startsWith;
+	import core.sys.linux.sys.xattr : llistxattr, lgetxattr;
+
+	ListMode listMode;
+	bool recursive;
+
+	getopt(args, std.getopt.config.passThrough, "L|list-extracted", &listMode);
+	if (listMode == ListMode.init)
+		return false;
+
+	getopt(args, "r|recursive", &recursive);
+
+	if (args.length < 2)
+		args ~= ".";
+
+	errorCode = 1;
+
+	char[65536] buf;
+	foreach (path; args[1 ..  $])
+	{
+		auto p = buildPath(path, "/");
+		foreach (e; dirEntries(path, recursive ? SpanMode.breadth : SpanMode.shallow, false))
+		{
+			auto displayName = e.name.startsWith(path) ? e.name[path.length + 1 .. $] : e.name;
+			auto namez = e.name.toStringz();
+			long s = llistxattr(namez, buf.ptr, buf.length);
+			errnoEnforce(s >= 0, "llistxattr: " ~ e.name);
+			bool listed = false;
+			foreach (attr; buf[0 .. s].splitter("\0"))
+			{
+				if (attr.startsWith("user.ext4rescue"))
+				{
+					s = lgetxattr(namez, attr.ptr, buf.ptr, buf.length);
+					errnoEnforce(s >= 0, "lgetxattr: " ~ e.name);
+					writeln(buf[0 .. s], " ", displayName);
+					listed = true;
+				}
+			}
+			if (!listed && listMode == ListMode.all)
+				writeln(FileStatus.init, " ", displayName);
+		}
+	}
+	return true;
+}
+
 int main(string[] args)
 {
 	bool forceScan;
@@ -253,6 +303,9 @@ int main(string[] args)
 
 	try
 	{
+		if (listExtractedFiles(args))
+			return 0;
+
 		getopt(args,
 			"s|summary",    &summary,
 			"l|list",       &listMode,
