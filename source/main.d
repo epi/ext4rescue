@@ -22,8 +22,8 @@ module main;
 
 import std.bitmanip;
 import std.exception;
-import std.getopt;
 import std.stdio;
+import std.getopt;
 import std.typecons : scoped;
 import std.range : enumerate;
 
@@ -239,7 +239,10 @@ void showTree(FileTree fileTree)
 	}
 }
 
-void main(string[] args)
+// return 2 if command line could not be parsed
+private int errorCode = 2;
+
+int main(string[] args)
 {
 	bool forceScan;
 	bool summary;
@@ -248,79 +251,101 @@ void main(string[] args)
 	string[] srcPaths;
 	string destPath;
 
-	getopt(args, "force-scan", &forceScan, "list", &listMode, "summary", &summary, "tree", &tree, "from", &srcPaths, "to", &destPath);
-
-	enforce(args.length >= 2, "Missing ext4 file system image name");
-	string imageName = args[1];
-	string ddrescueLogName;
-	Region[] regions;
-	if (args.length > 2)
+	try
 	{
-		ddrescueLogName = args[2];
-		regions = parseLog(File(ddrescueLogName).byLine());
-	}
-	if (regions.length == 0)
-		regions ~= Region(0, getFileSize(imageName), true);
-	//regions = regions.addRandomDamage(1300, 10240);
-	debug writeln(regions);
+		getopt(args,
+			"s|summary",    &summary,
+			"l|list",       &listMode,
+			"T|tree",       &tree,
+			"t|to",         &destPath,
+			"f|from",       &srcPaths,
+			"F|force-scan", &forceScan);
 
-	scope ext4 = new Ext4(imageName, regions);
-	debug
-	{
-		writefln("Block size:   %12s", ext4.blockSize);
-		writefln("Inode count:  %12s", ext4.inodes.length);
-		ext4.superBlock.dump();
-	}
+		enforce(args.length >= 2, "Missing ext4 file system image name");
 
-	FileTree fileTree;
+		// return 1 if command line was parsed correctly but something went wrong later
+		errorCode = 1;
 
-	if (!forceScan)
-	{
-		try
+		ExtractTarget extractTarget = destPath ? new DirectoryExtractTarget(destPath) : null;
+
+		string imageName = args[1];
+		string ddrescueLogName;
+		Region[] regions;
+		if (args.length > 2)
 		{
-			fileTree = readCachedFileTree(imageName, ddrescueLogName);
+			ddrescueLogName = args[2];
+			regions = parseLog(File(ddrescueLogName).byLine());
 		}
-		catch (Exception e)
+		if (regions.length == 0)
+			regions ~= Region(0, getFileSize(imageName), true);
+		regions = regions.addRandomDamage(1300, 10240);
+		debug writeln(regions);
+
+		scope ext4 = new Ext4(imageName, regions);
+		debug
 		{
-			stderr.writeln("Could not read cached file tree: ", e.msg);
+			writefln("Block size:   %12s", ext4.blockSize);
+			writefln("Inode count:  %12s", ext4.inodes.length);
+			ext4.superBlock.dump();
+		}
+
+		FileTree fileTree;
+
+		if (!forceScan)
+		{
+			try
+			{
+				fileTree = readCachedFileTree(imageName, ddrescueLogName);
+			}
+			catch (Exception e)
+			{
+				stderr.writeln("Could not read cached file tree: ", e.msg);
+			}
+		}
+
+		if (!fileTree)
+		{
+			fileTree = scanInodesAndDirectories(ext4,
+				(uint current, uint total) {
+					stdout.writef("Scanning inodes and directories... %3d%%\r", current * 100UL / total);
+					stdout.flush();
+					return true;
+				});
+			writeln();
+			if (!fileTree.get!Directory(2).inodeIsOk)
+			{
+				writeln("Root directory inode is damaged. Trying to find root directory data...");
+				findRootDirectoryContents(ext4, fileTree);
+			}
+			cacheFileTree(imageName, ddrescueLogName, fileTree);
+		}
+
+		listFiles(fileTree, ext4, listMode);
+		if (summary)
+			showSummary(fileTree, ext4);
+		if (tree)
+			showTree(fileTree);
+
+		if (destPath)
+		{
+			SomeFile[] srcFiles;
+			if (srcPaths.length)
+			{
+				foreach (path; srcPaths)
+					srcFiles ~= fileTree.getByPath(path);
+			}
+			else
+				srcFiles = fileTree.roots[];
+
+			foreach (file; srcFiles)
+				extract.extract(file, ext4, extractTarget);
 		}
 	}
-
-	if (!fileTree)
+	catch (Exception e)
 	{
-		fileTree = scanInodesAndDirectories(ext4,
-			(uint current, uint total) {
-				stdout.writef("Scanning inodes and directories... %3d%%\r", current * 100UL / total);
-				stdout.flush();
-				return true;
-			});
-		writeln();
-		if (!fileTree.get!Directory(2).inodeIsOk)
-		{
-			writeln("Root directory inode is damaged. Trying to find root directory data...");
-			findRootDirectoryContents(ext4, fileTree);
-		}
-		cacheFileTree(imageName, ddrescueLogName, fileTree);
+		debug stderr.writeln(e);
+		else stderr.writeln(args[0], ": ", e.msg);
+		return errorCode;
 	}
-
-	listFiles(fileTree, ext4, listMode);
-	if (summary)
-		showSummary(fileTree, ext4);
-	if (tree)
-		showTree(fileTree);
-
-	if (destPath)
-	{
-		SomeFile[] srcFiles;
-		if (srcPaths.length)
-		{
-			foreach (path; srcPaths)
-				srcFiles ~= fileTree.getByPath(path);
-		}
-		else
-			srcFiles = fileTree.roots[];
-
-		foreach (file; srcFiles)
-			extract.extract(file, ext4, new DirectoryExtractTarget(destPath));
-	}
+	return 0;
 }
