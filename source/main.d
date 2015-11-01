@@ -436,6 +436,8 @@ int main(string[] args)
 
 		if (destPath)
 		{
+			import std.algorithm.comparison : predSwitch;
+
 			SomeFile[] srcFiles;
 			if (srcPaths.length)
 			{
@@ -445,8 +447,31 @@ int main(string[] args)
 			else
 				srcFiles = fileTree.roots[];
 
+			ulong totalByteCount;
+			ulong outByteCount;
+			uint outFileCount;
 			foreach (file; srcFiles)
-				extract.extract(file, ext4, extractTarget);
+			{
+				countFilesAndBytes(file, ext4, outFileCount, outByteCount);
+				totalByteCount += outByteCount;
+			}
+			foreach (file; srcFiles)
+				extract.extract(file, ext4, extractTarget,
+					(ulong writtenByteCount, ExtractType type, in char[] path, in char[] orig)
+					{
+						writef("(%5.2f%%) %s %s",
+							writtenByteCount * 100.0 / totalByteCount,
+							type.predSwitch(
+								ExtractType.file, "f",
+								ExtractType.dir, "d",
+								ExtractType.symlink, "l",
+								ExtractType.hardlink, "h"),
+							path);
+						if (orig.length > 0)
+							write(" -> ", orig);
+						writeln();
+						return false;
+					});
 		}
 	}
 	catch (Exception e)

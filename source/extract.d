@@ -22,7 +22,7 @@ module extract;
 
 import std.conv;
 import std.path;
-import std.stdio;
+import std.stdio : File;
 
 import ext4;
 import filetree;
@@ -133,7 +133,47 @@ class DirectoryExtractTarget : ExtractTarget
 	private string _destPath;
 }
 
-void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
+enum ExtractType
+{
+	file,
+	dir,
+	symlink,
+	hardlink,
+}
+
+void countFilesAndBytes(SomeFile root, Ext4 ext4, out uint fileCount, out ulong byteCount)
+{
+	uint localFileCount;
+	ulong localByteCount;
+
+	root.accept(new class FileVisitor
+		{
+			void visit(Directory d)
+			{
+				foreach (c; d.children)
+					c.accept(this);
+				localFileCount += 1;
+				localByteCount += d.byteCount;
+			}
+
+			void visit(RegularFile f)
+			{
+				localFileCount += f.linkCount == 0 ? 1 : f.linkCount;
+				localByteCount += f.byteCount;
+			}
+
+			void visit(SymbolicLink l)
+			{
+				localFileCount += l.linkCount == 0 ? 1 : l.linkCount;
+				localByteCount += l.byteCount;
+			}
+		});
+	fileCount = localFileCount;
+	byteCount = localByteCount;
+}
+
+void extract(SomeFile root, Ext4 ext4, ExtractTarget target,
+	scope bool delegate(ulong writtenByteCount, ExtractType type, in char[] path, in char[] dest) progressDg)
 {
 	import std.range : repeat, take;
 	root.accept(new class FileVisitor
@@ -141,6 +181,8 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 		Directory currentDir;
 		string currentPath;
 		string[uint] writtenFiles;
+		ulong writtenByteCount;
+		bool stop;
 
 		private string getName(Directory d)
 		{
@@ -159,12 +201,21 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 			Directory tempCurrentDir = currentDir;
 			currentDir = d;
 			scope(exit) currentDir = tempCurrentDir;
-			writeln("d ", currentPath);
+			if (progressDg(writtenByteCount, ExtractType.dir, currentPath, ""))
+			{
+				stop = true;
+				return;
+			}
 			target.mkdir(currentPath);
 			foreach (c; d.children)
+			{
 				c.accept(this);
+				if (stop)
+					break;
+			}
 			target.setStatus(currentPath, d.status);
 			target.setAttr(currentPath, ext4.inodes[d.inodeNum]);
+			writtenByteCount += d.byteCount;
 		}
 
 		private string[] getNames(MultiplyLinkedFile mlf)
@@ -185,7 +236,11 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 			string orig = writtenFiles.get(inodeNum, null);
 			if (!orig)
 				return false;
-			writeln("h ", path, " -> ", orig);
+			if (progressDg(writtenByteCount, ExtractType.hardlink, path, orig))
+			{
+				stop = true;
+				return true;
+			}
 			target.link(orig, path);
 			return true;
 		}
@@ -197,7 +252,11 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 				string path = buildPath(currentPath, name);
 				if (hardlink(f.inodeNum, path))
 					return;
-				writeln("f ", path);
+				if (progressDg(writtenByteCount, ExtractType.file, path, ""))
+				{
+					stop = true;
+					return;
+				}
 				auto stream = target.writeFile(path);
 				scope(exit) stream.close();
 				auto inode = ext4.inodes[f.inodeNum];
@@ -239,6 +298,7 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 				target.setStatus(currentPath, f.status);
 				target.setAttr(path, inode);
 				writtenFiles[f.inodeNum] = path;
+				writtenByteCount += f.byteCount;
 			}
 		}
 
@@ -253,11 +313,16 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target)
 				if (!inode.ok)
 					return;
 				string orig = inode.getSymlinkTarget();
-				writeln("l ", path, " -> ", orig);
+				if (progressDg(writtenByteCount, ExtractType.symlink, path, orig))
+				{
+					stop = true;
+					return;
+				}
 				target.symlink(orig, path);
 				target.setStatus(currentPath, l.status);
 				target.setAttr(path, inode);
 				writtenFiles[l.inodeNum] = path;
+				writtenByteCount += l.byteCount;
 			}
 		}
 	});
