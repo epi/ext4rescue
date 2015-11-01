@@ -139,14 +139,24 @@ class Directory : SomeFile
 		return Result(this);
 	}
 
-	private void addChild(SomeFile f)
+	private final void _addChild(SomeFile f)
 	{
 		auto existing = _children.get(f.inodeNum, null);
 		if (existing is f)
 			return;
 		enforce!Error(existing is null);
 		_children[f.inodeNum] = f;
+	}
+
+	private final void addChild(Directory d)
+	{
+		_addChild(d);
 		++_subdirectoryCount;
+	}
+
+	private final void addChild(MultiplyLinkedFile mlf)
+	{
+		_addChild(mlf);
 	}
 
 	@property uint subdirectoryCount() const pure nothrow
