@@ -12,7 +12,10 @@ test:
 
 doc:
 	dub build -b ddox
-	markdown <README.md >README.html
+	printf '<!DOCTYPE html>\n<html>\n<head>\n<title>ext4rescue manual</title>\n' >README.html
+	printf '<meta charset="UTF-8"></head>\n<body>\n' >>README.html
+	markdown <README.md >>README.html
+	printf '</body>\n</html>\n' >>README.html
 
 clean:
 	dub clean
