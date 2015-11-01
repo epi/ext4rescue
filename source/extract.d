@@ -48,6 +48,10 @@ class DirectoryExtractTarget : ExtractTarget
 {
 	this(string destPath)
 	{
+		import std.conv : text;
+		import std.exception : enforce;
+		import std.file : exists;
+		enforce(!exists(destPath), text(`"`, destPath, `" already exists`));
 		_destPath = destPath;
 	}
 
