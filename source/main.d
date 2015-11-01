@@ -319,10 +319,11 @@ bool listExtractedFiles(string[] args)
 	char[65536] buf;
 	foreach (path; args[1 ..  $])
 	{
-		auto p = buildPath(path, "/");
+		auto prefix = buildPath(path, ".")[0 .. $ - 1];
+		writeln(prefix);
 		foreach (e; dirEntries(path, recursive ? SpanMode.breadth : SpanMode.shallow, false))
 		{
-			auto displayName = e.name.startsWith(path) ? e.name[path.length + 1 .. $] : e.name;
+			auto displayName = e.name.startsWith(prefix) ? e.name[prefix.length .. $] : e.name;
 			auto namez = e.name.toStringz();
 			long s = llistxattr(namez, buf.ptr, buf.length);
 			errnoEnforce(s >= 0, "llistxattr: " ~ e.name);
