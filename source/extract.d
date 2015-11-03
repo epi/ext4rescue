@@ -60,13 +60,14 @@ private
 
 class DirectoryExtractTarget : ExtractTarget
 {
-	this(string destPath)
+	this(string destPath, bool chown)
 	{
 		import std.conv : text;
 		import std.exception : enforce;
 		import std.file : exists;
 		enforce(!exists(destPath), text(`"`, destPath, `" already exists`));
 		_destPath = destPath;
+		_chown = chown;
 	}
 
 	void mkdir(in char[] path)
@@ -141,8 +142,11 @@ class DirectoryExtractTarget : ExtractTarget
 			errnoEnforce(chmod(pathz, mode) == 0,
 				format("Failed to set mode %04o for file %s", mode, path));
 		}
-		errnoEnforce(lchown(pathz, inode.uid, inode.gid) == 0,
-			format("Failed to set uid/gid to %d/%d for file %s", inode.uid, inode.gid, path));
+		if (_chown)
+		{
+			errnoEnforce(lchown(pathz, inode.uid, inode.gid) == 0,
+				format("Failed to set uid/gid to %d/%d for file %s", inode.uid, inode.gid, path));
+		}
 	}
 
 	void setStatus(in char[] path, FileStatus status)
@@ -157,6 +161,7 @@ class DirectoryExtractTarget : ExtractTarget
 	}
 
 	private string _destPath;
+	private bool _chown;
 }
 
 enum ExtractType

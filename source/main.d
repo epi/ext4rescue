@@ -273,6 +273,8 @@ bool showHelp(string[] args)
 		" -t  --to=DIR        Extract files to the specified DIR.\n" ~
 		" -f  --from=PATH     Specify PATHs to extract (can be used multiple times).\n" ~
 		"                     If not specified, everything is extracted.\n" ~
+		" -c  --chown         Set user ID and group ID for extracted files (requires\n" ~
+		"                     root privileges)\n" ~
 		" -F  --force-scan    Analyze the disk image even if cached analysis result\n" ~
 		"                     is present.\n" ~
 		" -L  --list-extracted=all|bad\n" ~
@@ -353,6 +355,7 @@ int main(string[] args)
 	bool tree;
 	string[] srcPaths;
 	string destPath;
+	bool chown;
 
 	try
 	{
@@ -368,6 +371,7 @@ int main(string[] args)
 			"T|tree",       &tree,
 			"t|to",         &destPath,
 			"f|from",       &srcPaths,
+			"c|chown",      &chown,
 			"F|force-scan", &forceScan);
 
 		enforce(args.length >= 2, "Missing ext4 file system image name");
@@ -375,7 +379,7 @@ int main(string[] args)
 		// return 1 if command line was parsed correctly but something went wrong later
 		errorCode = 1;
 
-		ExtractTarget extractTarget = destPath ? new DirectoryExtractTarget(destPath) : null;
+		ExtractTarget extractTarget = destPath ? new DirectoryExtractTarget(destPath, chown) : null;
 
 		string imageName = args[1];
 		string ddrescueLogName;
