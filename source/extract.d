@@ -44,6 +44,20 @@ interface ExtractTarget
 	void setStatus(in char[] path, FileStatus status);
 }
 
+private
+{
+	import core.sys.posix.time : timespec;
+	import core.time : Duration;
+	extern(C) int utimensat(int dirfd, const(char)* pathname, const(timespec)* times, int flags);
+	enum AT_FDCWD = -100;
+	enum AT_SYMLINK_NOFOLLOW = 0x100;
+
+	void mktspec(ref timespec ts, Duration d)
+	{
+		d.split!("seconds", "nsecs")(ts.tv_sec, ts.tv_nsec);
+	}
+}
+
 class DirectoryExtractTarget : ExtractTarget
 {
 	this(string destPath)
@@ -109,10 +123,18 @@ class DirectoryExtractTarget : ExtractTarget
 
 	void setAttr(in char[] path, Ext4.Inode inode)
 	{
+		import std.datetime : SysTime, DateTime;
 		import defs : Mode;
+
 		if (!inode.ok)
 			return;
 		auto pathz = buildPath(_destPath, path).toStringz();
+		timespec[2] times;
+		auto epoch = SysTime(DateTime(1970, 1, 1));
+		mktspec(times[0], inode.atime - epoch);
+		mktspec(times[1], inode.mtime - epoch);
+		errnoEnforce(utimensat(AT_FDCWD, pathz, times.ptr, AT_SYMLINK_NOFOLLOW) == 0,
+			format("Failed to set times for file %s", path));
 		if (inode.mode.type != Mode.Type.symlink)
 		{
 			uint mode = inode.mode.mode & octal!"7777";
@@ -249,56 +271,61 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target,
 			return true;
 		}
 
+		void writeFileData(in char[] path, Ext4.Inode inode)
+		{
+			auto stream = target.writeFile(path);
+			scope(exit) stream.close();
+			if (!inode.ok) // leave an empty file if the inode is bad
+				return;
+			auto range = inode.extents;
+			while (!range.empty)
+			{
+				Extent extent = range.front;
+				range.popFront();
+				if (extent.ok && extent.blockCount)
+				{
+					ulong offset = extent.logicalBlockNum * ext4.blockSize;
+					stream.seek(offset);
+					enum chunkSize = 32;
+					while (extent.blockCount > chunkSize)
+					{
+						auto mme = ext4.cache.mapExtent(extent.physicalBlockNum, chunkSize);
+						stream.rawWrite(mme[]);
+						extent.logicalBlockNum += chunkSize;
+						extent.physicalBlockNum += chunkSize;
+						extent.blockCount -= chunkSize;
+					}
+					auto mme = ext4.cache.mapExtent(extent.physicalBlockNum, extent.blockCount);
+					if (!range.empty)
+						stream.rawWrite(mme[]);
+					else
+					{
+						import std.exception : enforce;
+						offset = extent.logicalBlockNum * ext4.blockSize;
+						size_t len = cast(size_t) inode.size - offset;
+						if (len <= mme.length)
+							stream.rawWrite(mme[0 .. len]);
+						else // there might be unallocated blocks at the end of the file
+							stream.rawWrite(mme[]);
+					}
+				}
+			}
+		}
+
 		void visit(RegularFile f)
 		{
 			foreach (name; getNames(f))
 			{
 				string path = buildPath(currentPath, name);
 				if (hardlink(f.inodeNum, path))
-					return;
+					continue;
 				if (progressDg(writtenByteCount, ExtractType.file, path, ""))
 				{
 					stop = true;
 					return;
 				}
-				auto stream = target.writeFile(path);
-				scope(exit) stream.close();
-				auto inode = ext4.inodes[f.inodeNum];
-				if (!inode.ok)
-					break;
-				auto range = inode.extents;
-				while (!range.empty)
-				{
-					Extent extent = range.front;
-					range.popFront();
-					if (extent.ok && extent.blockCount)
-					{
-						ulong offset = extent.logicalBlockNum * ext4.blockSize;
-						stream.seek(offset);
-						enum chunkSize = 32;
-						while (extent.blockCount > chunkSize)
-						{
-							auto mme = ext4.cache.mapExtent(extent.physicalBlockNum, chunkSize);
-							stream.rawWrite(mme[]);
-							extent.logicalBlockNum += chunkSize;
-							extent.physicalBlockNum += chunkSize;
-							extent.blockCount -= chunkSize;
-						}
-						auto mme = ext4.cache.mapExtent(extent.physicalBlockNum, extent.blockCount);
-						if (!range.empty)
-							stream.rawWrite(mme[]);
-						else
-						{
-							import std.exception : enforce;
-							offset = extent.logicalBlockNum * ext4.blockSize;
-							size_t len = cast(size_t) inode.size - offset;
-							if (len <= mme.length)
-								stream.rawWrite(mme[0 .. len]);
-							else // there might be unallocated blocks at the end of the file
-								stream.rawWrite(mme[]);
-						}
-					}
-				}
+				Ext4.Inode inode = ext4.inodes[f.inodeNum];
+				writeFileData(path, inode);
 				target.setStatus(currentPath, f.status);
 				target.setAttr(path, inode);
 				writtenFiles[f.inodeNum] = path;
