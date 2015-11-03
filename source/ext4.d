@@ -584,6 +584,19 @@ class Ext4
 			return bitCat(inodeStruct.l_i_gid_high, inodeStruct.i_gid);
 		}
 
+		import std.datetime : SysTime, DateTime;
+		import core.time : seconds;
+
+		@property SysTime atime() const
+		{
+			return SysTime(DateTime(1970, 1, 1)) + inodeStruct.i_atime.seconds;
+		}
+
+		@property SysTime mtime() const
+		{
+			return SysTime(DateTime(1970, 1, 1)) + inodeStruct.i_mtime.seconds;
+		}
+
 		Ext4 ext4;
 		uint inodeNum;
 		CachedStruct!ext3_inode inodeStruct;
