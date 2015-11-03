@@ -105,6 +105,11 @@ Usage
     If `PATH` points to a directory, it is extracted recursively.
     This option can be specified multiple times.
 
+-   `-c`, `--chown`
+
+    Set user ID and group ID on extracted files. Additional privileges are required for that to succeed,
+    see *chown(2)*.
+
 -   `-F --force-scan`
 
     This option forces ext4rescue to re-analyze the file system image even if a cached analysis result is present.
@@ -172,11 +177,11 @@ Bugs and limitations
 
 Listed in the order of decreasing priority:
 
-- Access time and modification time are not preserved (TODO: fix it for 0.1.0).
 - Currently only ext4 extent trees are supported. Support for legacy block maps is planned for future releases.
-- Master super block is always used - there is no option to use any of its copies.
-- User ID, group ID, and permissions **are** preserved, which means that you may be unable to access
-  some of the extracted files.
+- Many flags in the super block are ignored.
+- Master super block is always used – there is no option to use any of its copies.
+- Sub-second part of last access time and last modification time is discarded when extracting files.
+- There is no way to map the user and group IDs in the source file system to different ones in the target file system.
 - An option to display detailed information about a file (stat + location of data + detailed damage report)
   would be useful.
 - Only directories, regular files and symbolic links are recovered, other file types (such as device nodes)
