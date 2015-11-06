@@ -322,7 +322,6 @@ bool listExtractedFiles(string[] args)
 	foreach (path; args[1 ..  $])
 	{
 		auto prefix = buildPath(path, ".")[0 .. $ - 1];
-		writeln(prefix);
 		foreach (e; dirEntries(path, recursive ? SpanMode.breadth : SpanMode.shallow, false))
 		{
 			auto displayName = e.name.startsWith(prefix) ? e.name[prefix.length .. $] : e.name;
@@ -356,6 +355,8 @@ int main(string[] args)
 	string[] srcPaths;
 	string destPath;
 	bool chown;
+	uint randomDamageCount;
+	uint randomDamageSize = 1024;
 
 	try
 	{
@@ -372,7 +373,9 @@ int main(string[] args)
 			"t|to",         &destPath,
 			"f|from",       &srcPaths,
 			"c|chown",      &chown,
-			"F|force-scan", &forceScan);
+			"F|force-scan", &forceScan,
+			"random-damage-num", &randomDamageCount,
+			"random-damage-size", &randomDamageSize);
 
 		enforce(args.length >= 2, "Missing ext4 file system image name");
 
@@ -391,7 +394,8 @@ int main(string[] args)
 		}
 		if (regions.length == 0)
 			regions ~= Region(0, getFileSize(imageName), true);
-		regions = regions.addRandomDamage(1300, 10240);
+		if (randomDamageCount && randomDamageSize)
+			regions = regions.addRandomDamage(randomDamageCount, randomDamageSize);
 		debug writeln(regions);
 
 		scope ext4 = new Ext4(imageName, regions);
