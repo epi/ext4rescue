@@ -331,7 +331,7 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target,
 				}
 				Ext4.Inode inode = ext4.inodes[f.inodeNum];
 				writeFileData(path, inode);
-				target.setStatus(currentPath, f.status);
+				target.setStatus(path, f.status);
 				target.setAttr(path, inode);
 				writtenFiles[f.inodeNum] = path;
 				writtenByteCount += f.byteCount;
@@ -355,7 +355,7 @@ void extract(SomeFile root, Ext4 ext4, ExtractTarget target,
 					return;
 				}
 				target.symlink(orig, path);
-				target.setStatus(currentPath, l.status);
+				target.setStatus(path, l.status);
 				target.setAttr(path, inode);
 				writtenFiles[l.inodeNum] = path;
 				writtenByteCount += l.byteCount;
