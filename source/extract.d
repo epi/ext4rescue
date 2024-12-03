@@ -103,7 +103,7 @@ class DirectoryExtractTarget : ExtractTarget
 	import core.sys.posix.unistd : link, symlink, lchown;
 	import core.sys.linux.sys.xattr : lsetxattr;
 	import core.stdc.errno : errno, ENODATA;
-	import std.file : errnoEnforce;
+	import std.exception : errnoEnforce;
 	import std.string : toStringz, format;
 
 	void link(in char[] oldPath, in char[] newPath)

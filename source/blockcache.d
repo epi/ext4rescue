@@ -24,7 +24,7 @@ module blockcache;
 
 import std.algorithm;
 import std.conv;
-import std.exception;
+import std.exception : errnoEnforce;
 import std.range;
 import std.stdint;
 import std.string;
@@ -33,7 +33,8 @@ debug import std.stdio;
 
 import core.sys.posix.fcntl;
 import core.sys.posix.unistd;
-import core.sys.posix.sys.mman;
+import core.sys.posix.sys.types;
+import core.sys.linux.sys.mman : mmap, munmap, madvise, PROT_READ, MAP_PRIVATE, MAP_FAILED;
 
 import ddrescue;
 
@@ -249,7 +250,7 @@ private:
 		_offset = offset;
 		_end = end;
 	}
-	
+
 	CachedPage* _impl;
 	uint _offset;
 	uint _end;
@@ -497,7 +498,7 @@ private:
 		_mru.prev = cpage;
 		_mru = cpage;
 	}
-	
+
 	void insert(ulong pageNum)
 	{
 		if (!_freeSlots)

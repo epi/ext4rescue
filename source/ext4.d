@@ -307,7 +307,7 @@ unittest
 	assert(!range.front.ok);
 	assert(range.front.logicalBlockNum == 0);
 	// Test flat tree with readable, but invalid header.
-	cache.put(ext4_extent_header(~EXT4_EXT_MAGIC, 3, 10, 0, 0), 13, 60, true);
+	cache.put(ext4_extent_header(cast(__le16) ~EXT4_EXT_MAGIC, 3, 10, 0, 0), 13, 60, true);
 	range = GenericExtentRange!TestCache(cache, 13, 60); //, 11 * ext4_extent.sizeof);
 	assert(!range.empty);
 	assert(!range.front.ok);
@@ -417,13 +417,13 @@ struct DirIterator
 		_cache = ext4._cache;
 		_extentRange = ext4.inodes[inodeNum].extents;
 		nextExtent();
-		if (!empty)
+		if (!_currentExtent.blockCount == 0)
 			_current = _cache.requestStruct!ext4_dir_entry_2(_currentExtent.physicalBlockNum, _offset);
 	}
 
 	@property bool empty() const pure nothrow
 	{
-		return _currentExtent.blockCount == 0;
+		return _currentExtent.blockCount == 0 || _current.file_type == ext4_dir_entry_2.Type.dir_csum;
 	}
 
 	@property auto front()
