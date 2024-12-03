@@ -100,7 +100,14 @@ class DirectoryExtractTarget : ExtractTarget
 	}
 
 	import core.sys.posix.sys.stat : chmod;
-	import core.sys.posix.unistd : link, symlink, lchown;
+	import core.sys.posix.unistd : link, symlink;
+	version (CRuntime_Musl) {
+		import core.sys.posix.unistd : uid_t, gid_t;
+		// TODO: PR to druntime, lchown's been in musl for a long time already
+		extern(C) pragma(mangle, "lchown") static int lchown(const char *path, uid_t uid, gid_t gid);
+	} else {
+		import core.sys.posix.unistd : lchown;
+	}
 	import core.sys.linux.sys.xattr : lsetxattr;
 	import core.stdc.errno : errno, ENODATA;
 	import std.exception : errnoEnforce;
